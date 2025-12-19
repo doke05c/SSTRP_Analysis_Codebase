@@ -63,11 +63,25 @@ for year in list_of_years: #iterate through the years to load the parquet into d
 for year in list_of_years: #iterate through the years to read/process duckdb tables
     table_name = list_of_tables[year]
 
-    count = duck_citibike_connect.execute(f"""
-        SELECT COUNT(*) FROM {table_name}
-    """).fetchone()[0] #take rowcount
+    total_count = duck_citibike_connect.execute(f"""
+        SELECT COUNT(*) FROM {table_name} 
+    """).fetchone()[0] #take total bike counts
 
-    print(f"{table_name}: {count:,} rows")
+    ebike_count = duck_citibike_connect.execute(f"""
+        SELECT COUNT(*) FROM {table_name} 
+        WHERE column01 = 'electric_bike'
+    """).fetchone()[0] #take ebike counts
+
+    classicbike_count = duck_citibike_connect.execute(f"""
+        SELECT COUNT(*) FROM {table_name} 
+        WHERE column01 = 'classic_bike'
+    """).fetchone()[0] #take classic bike counts
+
+
+
+    print(f"{year}: {total_count:,} total bikes")
+    print(f"{year}: {ebike_count:,} e-bikes")
+    print(f"{year}: {classicbike_count:,} classic bikes")
 
 #CLOSE DATABASE
 duck_citibike_connect.close()
