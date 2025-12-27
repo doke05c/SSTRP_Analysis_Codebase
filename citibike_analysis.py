@@ -6,21 +6,19 @@ from enum import Enum #make enumerated keywords (words with numerical values)
 column_dict = {
     "ride_id": "column00",
     "rideable_type": "column01",
-    "start yyyy=mm-dd hh" : "column02",
-    "start mm" : "column03",
-    "start ss" : "column04",
-    "end yyyy-mm-dd hh" : "column05",
-    "end mm" : "column06",
-    "end ss" : "column07",
-    "start_name" : "column08",
-    "start_ID" : "column09",
-    "end_name" : "column10",
-    "end_ID" : "column11",
-    "start_lat" : "column12",
-    "start_long" : "column13",
-    "end_lat" : "column14",
-    "end_long" : "column15",
-    "rider_type" : "column16",
+    "start time" : "column02",
+    "end time" : "column03",
+    "start_name" : "column04",
+    "start_ID" : "column05",
+    "end_name" : "column06",
+    "end_ID" : "column07",
+    "start_lat" : "column08",
+    "start_long" : "column09",
+    "end_lat" : "column10",
+    "end_long" : "column11",
+    "rider_type" : "column12",
+    "start_nta" : "column13",
+    "end_nta" : "column14"
 }   
 
 
@@ -95,27 +93,78 @@ neighborhood_list = duck_citibike_connect.execute("DESCRIBE ntas").fetchall()
 
 for year in list_of_years: #iterate through the years to read/process duckdb tables
     table_name = list_of_tables[year]
+    
+    #add start and end ntas to yearly tables, set them to a spatial join from nta shapefile
+    duck_citibike_connect.execute(f"""
+        ALTER TABLE {table_name}
+        ADD COLUMN IF NOT EXISTS {column_dict['start_nta']} VARCHAR;
+    """)
 
-    total_count = duck_citibike_connect.execute(f"""
-        SELECT COUNT(*) FROM {table_name} 
-    """).fetchone()[0] #take total bike counts
+    duck_citibike_connect.execute(f"""
+        ALTER TABLE {table_name}
+        ADD COLUMN IF NOT EXISTS {column_dict['end_nta']} VARCHAR;
+    """)
 
-    ebike_count = duck_citibike_connect.execute(f"""
-        SELECT COUNT(*) FROM {table_name} 
-        WHERE column01 = 'electric_bike'
-    """).fetchone()[0] #take ebike counts
+    #UPDATE THE START NTA COLUMN TO HAVE AN ACTUAL NEIGHBORHOOD IN IT! 
+    #THIS IS A VERY TAXING PROCESS (10M+, USE ONLY WHEN BRAND NEW DATA SHOWS UP)
+    test_start_nta = duck_citibike_connect.execute(f"""
+        SELECT {column_dict['start_nta']}
+        FROM {table_name}
+        ORDER BY rowid
+        LIMIT 1
+    """).fetchone()[0]
 
-    classicbike_count = duck_citibike_connect.execute(f"""
-        SELECT COUNT(*) FROM {table_name} 
-        WHERE column01 = 'classic_bike'
-    """).fetchone()[0] #take classic bike counts
+    if test_start_nta is None:
+        duck_citibike_connect.execute(f"""
+            UPDATE {table_name}
+            SET {column_dict['start_nta']} = ntas.ntaname
+            FROM ntas
+            WHERE ST_Within(
+                ST_Point({table_name}.{column_dict['start_long']}, {table_name}.{column_dict['start_lat']}),
+                ntas.geom
+            );
+        """)
 
-    print(f"{year}: {total_count:,} total bikes")
-    print(f"{year}: {ebike_count:,} e-bikes")
-    print(f"{year}: {classicbike_count:,} classic bikes")
+    #UPDATE THE END NTA COLUMN TO HAVE AN ACTUAL NEIGHBORHOOD IN IT! 
+    #THIS IS A VERY TAXING PROCESS (10M+, USE ONLY WHEN BRAND NEW DATA SHOWS UP)
+    test_end_nta = duck_citibike_connect.execute(f"""
+        SELECT {column_dict['end_nta']}
+        FROM {table_name}
+        ORDER BY rowid
+        LIMIT 1
+    """).fetchone()[0]
+
+    if test_end_nta is None:
+        duck_citibike_connect.execute(f"""
+            UPDATE {table_name}
+            SET {column_dict['end_nta']} = ntas.ntaname
+            FROM ntas
+            WHERE ST_Within(
+                ST_Point({table_name}.{column_dict['end_long']}, {table_name}.{column_dict['end_lat']}),
+                ntas.geom
+            );
+        """)
+
+    # ebike_count = duck_citibike_connect.execute(f"""
+    #     SELECT COUNT(*) FROM {table_name} 
+    #     WHERE column01 = 'electric_bike'
+    # """).fetchone()[0] #take ebike counts
+
+    # classicbike_count = duck_citibike_connect.execute(f"""
+    #     SELECT COUNT(*) FROM {table_name} 
+    #     WHERE column01 = 'classic_bike'
+    # """).fetchone()[0] #take classic bike counts
+
+    # print(f"{year}: {ebike_count:,} e-bikes")
+    # print(f"{year}: {classicbike_count:,} classic bikes")
 
 
-print(neighborhood_list)
+# print(neighborhood_list)
+# print(duck_citibike_connect.execute(f"DESCRIBE {list_of_tables['2024']}").fetchall())
+
+print(duck_citibike_connect.execute(
+    f"SELECT * FROM {list_of_tables['2024']} LIMIT 10"
+).df())
 
 #CLOSE DATABASE
 duck_citibike_connect.close()
