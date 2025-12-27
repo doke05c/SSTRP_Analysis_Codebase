@@ -4,6 +4,10 @@ from matplotlib import pyplot as plt #plotting library to graph info visually
 from enum import Enum #make enumerated keywords (words with numerical values)
 import pandas as pd #pandas to work with smaller result summary tables
 
+#object to store summary data
+all_years_summary_info = []
+
+
 #dictionary to match raw column names with legible names column_dict[name] -> column number
 column_dict = {
     "ride_id": "column00",
@@ -446,10 +450,7 @@ for year in list_of_years: #iterate through the years to read/process duckdb tab
             );
         """)
 
-    #object to store summary data
-    summary_info = []
-
-    #take counts of rides that started in cbd, ended outside of cbd, and vice versa
+    #take counts of rides that started in cbd, ended outside of cbd, and vice versa, as well as mnh non cbd to cbd, and within cbd
     summary_results = duck_citibike_connect.execute(f"""
         SELECT
             EXTRACT(MONTH FROM {column_dict['start time']}) AS month,
@@ -464,19 +465,38 @@ for year in list_of_years: #iterate through the years to read/process duckdb tab
                 WHEN {column_dict['start_nta']} = ANY(?)
                 AND {column_dict['end_nta']} = ANY(?)            
                 THEN 1 ELSE 0 END
-            ) AS cbd_to_non_cbd
+            ) AS cbd_to_non_cbd,
+
+            SUM(CASE
+                WHEN {column_dict['start_nta']} = ANY(?)
+                AND {column_dict['end_nta']} = ANY(?)            
+                THEN 1 ELSE 0 END
+            ) AS non_cbd_mnh_to_cbd_mnh,
+
+            SUM(CASE
+                WHEN {column_dict['start_nta']} = ANY(?)
+                AND {column_dict['end_nta']} = ANY(?)            
+                THEN 1 ELSE 0 END
+            ) AS within_cbd,
+
+            COUNT(*) AS total_trips
 
             FROM {table_name}
             GROUP BY month
             ORDER BY month 
-    """, [non_cbd_nta_list, crz_nta_list, crz_nta_list, non_cbd_nta_list]).fetchall()
+    """, [non_cbd_nta_list, crz_nta_list, crz_nta_list, non_cbd_nta_list, other_mnh_nta_list, crz_nta_list, crz_nta_list, crz_nta_list]).fetchall()
 
+    #create a df for just the one year we're looking at
+    one_year_df = pd.DataFrame(summary_results, columns=['month', 'non_cbd_to_cbd', 'cbd_to_non_cbd', 'non_cbd_mnh_to_cbd_mnh', 'within_cbd', 'total trips'])
+    one_year_df['year'] = year  # add year column
+    one_year_df = one_year_df[['year', 'month', 'non_cbd_to_cbd', 'cbd_to_non_cbd', 'non_cbd_mnh_to_cbd_mnh', 'within_cbd', 'total trips']]  # reorder
 
-    df = pd.DataFrame(summary_results, columns=['month', 'non_cbd_to_cbd', 'cbd_to_non_cbd'])
-    df['year'] = year  # add year column
-    df = df[['year', 'month', 'non_cbd_to_cbd', 'cbd_to_non_cbd']]  # reorder
+    #add this yearly df to the summary info list
+    all_years_summary_info.append(one_year_df)
 
-print(df)
+    #turn summary info list back to df now that we have all the years
+    all_years_summary_info_df = pd.concat(all_years_summary_info, ignore_index=True)
 
+print(all_years_summary_info_df)
 #CLOSE DATABASE
 duck_citibike_connect.close()
