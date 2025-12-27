@@ -449,31 +449,34 @@ for year in list_of_years: #iterate through the years to read/process duckdb tab
     #object to store summary data
     summary_info = []
 
-    for month in range(1, 13):
-        non_cbd_to_cbd = duck_citibike_connect.execute(f"""
-            SELECT COUNT(*) FROM {table_name} 
-            WHERE {column_dict['start_nta']} = ANY(?)
-            AND {column_dict['end_nta']} = ANY(?)
-            AND EXTRACT(MONTH FROM {column_dict['start time']}) = {month}
-        """, [non_cbd_nta_list, crz_nta_list]).fetchone()[0] #take counts of rides that started outside of cbd, ended in cbd
+    #take counts of rides that started in cbd, ended outside of cbd, and vice versa
+    summary_results = duck_citibike_connect.execute(f"""
+        SELECT
+            EXTRACT(MONTH FROM {column_dict['start time']}) AS month,
 
-        cbd_to_non_cbd = duck_citibike_connect.execute(f"""
-            SELECT COUNT(*) FROM {table_name} 
-            WHERE {column_dict['start_nta']} = ANY(?)
-            AND {column_dict['end_nta']} = ANY(?)
-            AND EXTRACT(MONTH FROM {column_dict['start time']}) = {month}
-        """, [crz_nta_list, non_cbd_nta_list]).fetchone()[0] #take counts of rides that started in cbd, ended outside of cbd
+            SUM(CASE
+                WHEN {column_dict['start_nta']} = ANY(?)
+                AND {column_dict['end_nta']} = ANY(?)
+                THEN 1 ELSE 0 END
+            ) AS non_cbd_to_cbd,
 
-        summary_info.append({
-            'year': year,
-            'month': month,
-            'non_cbd_to_cbd': non_cbd_to_cbd,
-            'cbd_to_non_cbd': cbd_to_non_cbd
-        })
+            SUM(CASE
+                WHEN {column_dict['start_nta']} = ANY(?)
+                AND {column_dict['end_nta']} = ANY(?)            
+                THEN 1 ELSE 0 END
+            ) AS cbd_to_non_cbd
+
+            FROM {table_name}
+            GROUP BY month
+            ORDER BY month 
+    """, [non_cbd_nta_list, crz_nta_list, crz_nta_list, non_cbd_nta_list]).fetchall()
 
 
-df = pd.DataFrame(summary_info)
+    df = pd.DataFrame(summary_results, columns=['month', 'non_cbd_to_cbd', 'cbd_to_non_cbd'])
+    df['year'] = year  # add year column
+    df = df[['year', 'month', 'non_cbd_to_cbd', 'cbd_to_non_cbd']]  # reorder
 
 print(df)
+
 #CLOSE DATABASE
 duck_citibike_connect.close()
