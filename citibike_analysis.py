@@ -2,6 +2,7 @@ import duckdb #DuckDB will process the data with SQL
 from pathlib import Path # we use Path to establish a location for the folder where our collection of monthly data files lives
 from matplotlib import pyplot as plt #plotting library to graph info visually
 from enum import Enum #make enumerated keywords (words with numerical values)
+import pandas as pd #pandas to work with smaller result summary tables
 
 #dictionary to match raw column names with legible names column_dict[name] -> column number
 column_dict = {
@@ -445,28 +446,34 @@ for year in list_of_years: #iterate through the years to read/process duckdb tab
             );
         """)
 
-    non_cbd_to_cbd = duck_citibike_connect.execute(f"""
-        SELECT COUNT(*) FROM {table_name} 
-        WHERE {column_dict['start_nta']} = ANY(?)
-        AND {column_dict['end_nta']} = ANY(?)
-    """, [non_cbd_nta_list, crz_nta_list]).fetchone()[0] #take counts of rides that started outside of cbd, ended in cbd
+    #object to store summary data
+    summary_info = []
 
-    cbd_to_non_cbd = duck_citibike_connect.execute(f"""
-        SELECT COUNT(*) FROM {table_name} 
-        WHERE {column_dict['start_nta']} = ANY(?)
-        AND {column_dict['end_nta']} = ANY(?)
-    """, [crz_nta_list, non_cbd_nta_list]).fetchone()[0] #take counts of rides that started in cbd, ended outside of cbd
+    for month in range(1, 13):
+        non_cbd_to_cbd = duck_citibike_connect.execute(f"""
+            SELECT COUNT(*) FROM {table_name} 
+            WHERE {column_dict['start_nta']} = ANY(?)
+            AND {column_dict['end_nta']} = ANY(?)
+            AND EXTRACT(MONTH FROM {column_dict['start time']}) = {month}
+        """, [non_cbd_nta_list, crz_nta_list]).fetchone()[0] #take counts of rides that started outside of cbd, ended in cbd
 
-    print(f"{year}: {non_cbd_to_cbd:,} trips from non-CRZ to CRZ \n")
-    print(f"{year}: {cbd_to_non_cbd:,} trips from CRZ to non-CRZ \n")
+        cbd_to_non_cbd = duck_citibike_connect.execute(f"""
+            SELECT COUNT(*) FROM {table_name} 
+            WHERE {column_dict['start_nta']} = ANY(?)
+            AND {column_dict['end_nta']} = ANY(?)
+            AND EXTRACT(MONTH FROM {column_dict['start time']}) = {month}
+        """, [crz_nta_list, non_cbd_nta_list]).fetchone()[0] #take counts of rides that started in cbd, ended outside of cbd
+
+        summary_info.append({
+            'year': year,
+            'month': month,
+            'non_cbd_to_cbd': non_cbd_to_cbd,
+            'cbd_to_non_cbd': cbd_to_non_cbd
+        })
 
 
-# print(neighborhood_list)
-# print(duck_citibike_connect.execute(f"DESCRIBE {list_of_tables['2024']}").fetchall())
+df = pd.DataFrame(summary_info)
 
-# print(duck_citibike_connect.execute(
-#     f"SELECT * FROM {list_of_tables['2024']} LIMIT 10"
-# ).df())
-
+print(df)
 #CLOSE DATABASE
 duck_citibike_connect.close()
