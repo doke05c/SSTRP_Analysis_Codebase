@@ -27,13 +27,6 @@ column_dict = {
     "end_nta" : "column14"
 }   
 
-#escape apostrophes to not have them break in SQL query 
-#(many neighborhoods have apostrophes, like randall's island)
-def escape_apostrophes(lst):
-    for i in range(len(lst)):
-        lst[i] = lst[i].replace("'", "''")
-
-
 #list of ntas (long)
 crz_nta_list = [
     "Financial District-Battery Park City"
@@ -314,14 +307,6 @@ si_nta_list = [
     ,"Miller Field"
     ,"Great Kills Park"
 ]
-
-#apply escape apostrophe function for all borough lists
-escape_apostrophes(crz_nta_list)
-escape_apostrophes(other_mnh_nta_list)
-escape_apostrophes(bk_nta_list)
-escape_apostrophes(bronx_nta_list)
-escape_apostrophes(queens_nta_list)
-escape_apostrophes(si_nta_list)
 
 #make non-mnh and non-cbd lists
 non_mnh_nta_list = si_nta_list + bk_nta_list + bronx_nta_list + queens_nta_list
