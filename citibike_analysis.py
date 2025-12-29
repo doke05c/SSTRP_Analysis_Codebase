@@ -485,3 +485,6 @@ for year in list_of_years: #iterate through the years to read/process duckdb tab
 print(all_years_summary_info_df)
 #CLOSE DATABASE
 duck_citibike_connect.close()
+
+
+# all_years_summary_info_df.to_csv("citibike_analysis_summary.csv", index=False)
