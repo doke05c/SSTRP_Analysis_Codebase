@@ -11,8 +11,34 @@ list_of_years = ["2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022",
 #CREATE DATABASE, WILL BE CLOSED AT THE END OF RUN
 duck_ems_connect = duckdb.connect(database="ems.duckdb") 
 
+#MAKE NAME FOR SQL/DUCKDB TABLE (makes port from previous analysis more convenient)
+table_name = "EMS_TABLE"
+
+#CHECK IF PARQUET HAS ALREADY BEEN CREATED, IF NOT, MAKE IT:
+parquet_path = Path("ems_response_since_2015.parquet")
+csv_path = Path("ems_response_since_2015.csv")
+
+if (not (parquet_path.exists())):
+
+    duck_ems_connect.execute(f"""
+            COPY (
+                SELECT *
+                FROM read_csv_auto(
+                '{csv_path}'
+            )
+        ) TO '{parquet_path}' (FORMAT PARQUET);
+    """)
 
 
+# IF ALREADY EXISTS, BUT DATA IS OLD, USER RESPONSIBILITY TO REPLACE
+duck_ems_connect.execute(f"""
+    CREATE TABLE IF NOT EXISTS {table_name} AS 
+    SELECT *
+    FROM read_parquet('{parquet_path}')
+""")
+
+#ACTUAL ANALYSIS BEGINS HERE
+#lorem ipsum dolom sit amor
 
 #CLOSE DATABASE
 duck_ems_connect.close()
