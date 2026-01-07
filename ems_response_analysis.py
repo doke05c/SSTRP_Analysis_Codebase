@@ -62,6 +62,7 @@ valid_check_all_years_info = []
 
 # for year in list_of_years:
 
+#FIND OUT HOW MANY OF THE ROWS ARE ZEROES
 validity_results = duck_ems_connect.execute(f"""
     SELECT
         EXTRACT(YEAR FROM INCIDENT_DATETIME) AS year,
@@ -93,6 +94,8 @@ valid_check_all_years_info = []
 
 # for year in list_of_years:
 
+
+#WHAT IS THE AVERAGE TRAVEL/RESPONSE TIME, GROUPED BY YEAR/MONTH AND AREA
 travel_time_results = duck_ems_connect.execute(f"""
     SELECT
         EXTRACT(YEAR FROM INCIDENT_DATETIME) AS year,
@@ -128,6 +131,23 @@ travel_time_results = duck_ems_connect.execute(f"""
 
 print(travel_time_results)
 
+#MAKE CBD ONLY VERSION OF THE ABOVE DATASET, PREPARE FOR GRAPHING (CONSIDER DOING THE SAME FOR OTHER AREAS)
+travel_time_results_cbd_only = travel_time_results[travel_time_results['area_type'] == 'cbd'].copy()
+travel_time_results_cbd_only['year_month'] = pd.to_datetime(travel_time_results_cbd_only['year'].astype(str) + '-' + travel_time_results_cbd_only['month'].astype(str) + '-01')
+
+
+#MAKE GRAPH FOR CBD AVERAGE RESPONSE/TRAVEL TIME
+plt.figure(figsize=(14,6))
+plt.plot(travel_time_results_cbd_only['year_month'], travel_time_results_cbd_only['average_travel_time'], marker='o', label='Average Travel Time (s)')
+plt.plot(travel_time_results_cbd_only['year_month'], travel_time_results_cbd_only['average_response_time'], marker='o', label='Average Response Time (s)')
+
+plt.title('CBD Average EMS Travel and Response Times by Month/Year')
+plt.xlabel('Month')
+plt.ylabel('Seconds')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 #CLOSE DATABASE
 duck_ems_connect.close()
