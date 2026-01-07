@@ -58,10 +58,6 @@ if (not (parquet_path.exists())):
 
 #ACTUAL ANALYSIS BEGINS HERE
 
-valid_check_all_years_info = []
-
-# for year in list_of_years:
-
 #FIND OUT HOW MANY OF THE ROWS ARE ZEROES
 validity_results = duck_ems_connect.execute(f"""
     SELECT
@@ -88,11 +84,6 @@ validity_results = duck_ems_connect.execute(f"""
 validity_results["invalid_travel_time_count_pct"] = validity_results["invalid_travel_time_count"] / validity_results["total_entries"] * 100
 
 print(validity_results)
-
-
-valid_check_all_years_info = []
-
-# for year in list_of_years:
 
 
 #WHAT IS THE AVERAGE TRAVEL/RESPONSE TIME, GROUPED BY YEAR/MONTH AND AREA
