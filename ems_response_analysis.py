@@ -13,6 +13,7 @@ list_of_years = [# 2015, 2016, 2017, 2018,
 class EMS(Enum):
     TIME_SEC = -101 #graph in values of seconds for dispatch and travel
     PCT_DISPATCH = -100 #graph in percentage of total time spent in dispatch
+    MYSTERY_ACTIVATION = -99 #graph in time spent between assignment and activation
 
 #set decision value from above
 GRAPH_DECISION = EMS.TIME_SEC
@@ -45,7 +46,7 @@ if (not (parquet_path.exists())):
         FROM read_parquet('{parquet_path}')
     """)
 
-    #RECLASSIFY TRAVEL TIMES AS INTEGERS
+    #RECLASSIFY TRAVEL/DISPATCH TIMES AS INTEGERS
     duck_ems_connect.execute(f"""
     ALTER TABLE {table_name}
     ADD COLUMN INCIDENT_TRAVEL_TM_SECONDS_QY_INT INTEGER;
@@ -57,12 +58,19 @@ if (not (parquet_path.exists())):
     """)
 
     duck_ems_connect.execute(f"""
+    ALTER TABLE {table_name}
+    ADD COLUMN DISPATCH_RESPONSE_SECONDS_QY_INT INTEGER;
+    """)
+
+    duck_ems_connect.execute(f"""
     UPDATE {table_name}
     SET
         INCIDENT_TRAVEL_TM_SECONDS_QY_INT =
             TRY_CAST(REPLACE(INCIDENT_TRAVEL_TM_SECONDS_QY, ',', '') AS INTEGER),
         INCIDENT_RESPONSE_SECONDS_QY_INT =
-            TRY_CAST(REPLACE(INCIDENT_RESPONSE_SECONDS_QY, ',', '') AS INTEGER);
+            TRY_CAST(REPLACE(INCIDENT_RESPONSE_SECONDS_QY, ',', '') AS INTEGER),
+        DISPATCH_RESPONSE_SECONDS_QY_INT =
+            TRY_CAST(REPLACE(DISPATCH_RESPONSE_SECONDS_QY, ',', '') AS INTEGER);
     """)
 
 #ACTUAL ANALYSIS BEGINS HERE
@@ -131,6 +139,14 @@ travel_time_results = duck_ems_connect.execute(f"""
             END
         ) AS average_response_time,
 
+        AVG(
+            EXTRACT(
+                EPOCH FROM (
+                FIRST_ACTIVATION_DATETIME - FIRST_ASSIGNMENT_DATETIME
+                )
+            )
+        ) AS average_mystery_activation_seconds,
+
         COUNT(*) AS num_of_entries
 
 
@@ -139,6 +155,7 @@ travel_time_results = duck_ems_connect.execute(f"""
         ORDER BY year, month, area_type, init_severity;
 """).fetchdf()
 
+#GET THE PERCENT OF TIME SPENT IN DISPATCH
 travel_time_results["pct_time_dispatch"] = ( travel_time_results["average_response_time"] - travel_time_results["average_travel_time"] ) / ( travel_time_results["average_response_time"] ) * 100
 
 #CUT OFF TO ONLY YEARS OF INTEREST
@@ -182,6 +199,16 @@ for area in ["cbd", "non_cbd_mnh", "bronx", "brooklyn", "queens", "staten_island
         plt.title(f'{area} Average EMS Proportion of Time Spent in Dispatch by Month/Year and by Severity')
 
         plt.ylim(0, 65)
+
+    if GRAPH_DECISION == EMS.MYSTERY_ACTIVATION:
+
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_life_threat['average_mystery_activation_seconds'], marker='o', label='Average Pct of Time Spent in Between Assignment and Activation for Life-Threatening (s)')
+
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_non_life_threat['average_mystery_activation_seconds'], marker='o', label='Average Pct of Time Spent in Between Assignment and Activation for Non Life-Threatening (s)')
+
+        plt.title(f'{area} Average EMS Proportion of Time Spent in Between Assignment and Activation by Month/Year and by Severity')
+
+        plt.ylim(20, 60)
 
     plt.xlabel('Year')
     plt.ylabel('Seconds')
