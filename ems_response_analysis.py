@@ -98,6 +98,11 @@ travel_time_results = duck_ems_connect.execute(f"""
             ELSE 'other'
         END AS area_type,
 
+        CASE
+            WHEN INITIAL_SEVERITY_LEVEL_CODE IN ('1', '2', '3') THEN 'life_threat'
+            ELSE 'non_life_threat'
+        END AS init_severity,
+
         AVG(
             CASE
                 WHEN INCIDENT_TRAVEL_TM_SECONDS_QY_INT != 0
@@ -115,24 +120,31 @@ travel_time_results = duck_ems_connect.execute(f"""
         ) AS average_response_time
 
         FROM {table_name}
-        GROUP BY year, month, area_type
-        ORDER BY year, month, area_type;
+        GROUP BY year, month, area_type, init_severity
+        ORDER BY year, month, area_type, init_severity;
 """).fetchdf()
 
 
 print(travel_time_results)
 
-#MAKE CBD ONLY VERSION OF THE ABOVE DATASET, PREPARE FOR GRAPHING (CONSIDER DOING THE SAME FOR OTHER AREAS)
-travel_time_results_cbd_only = travel_time_results[travel_time_results['area_type'] == 'cbd'].copy()
-travel_time_results_cbd_only['year_month'] = pd.to_datetime(travel_time_results_cbd_only['year'].astype(str) + '-' + travel_time_results_cbd_only['month'].astype(str) + '-01')
+#MAKE CBD ONLY VERSION OF THE ABOVE DATASET SPLIT BY SEVERITY, PREPARE FOR GRAPHING (CONSIDER DOING THE SAME FOR OTHER AREAS)
+travel_time_results_cbd_only_life_threat = travel_time_results[(travel_time_results['area_type'] == 'cbd') & (travel_time_results['init_severity'] == 'life_threat')].copy()
+travel_time_results_cbd_only_non_life_threat = travel_time_results[(travel_time_results['area_type'] == 'cbd') & (travel_time_results['init_severity'] == 'non_life_threat')].copy()
+
+#give year/month attribute
+travel_time_results_cbd_only_non_life_threat['year_month'] = pd.to_datetime(travel_time_results_cbd_only_non_life_threat['year'].astype(str) + '-' + travel_time_results_cbd_only_non_life_threat['month'].astype(str) + '-01')
+travel_time_results_cbd_only_life_threat['year_month'] = pd.to_datetime(travel_time_results_cbd_only_life_threat['year'].astype(str) + '-' + travel_time_results_cbd_only_life_threat['month'].astype(str) + '-01')
 
 
-#MAKE GRAPH FOR CBD AVERAGE RESPONSE/TRAVEL TIME
+#MAKE GRAPH FOR CBD AVERAGE RESPONSE/TRAVEL TIME + SEVERITY
 plt.figure(figsize=(14,6))
-plt.plot(travel_time_results_cbd_only['year_month'], travel_time_results_cbd_only['average_travel_time'], marker='o', label='Average Travel Time (s)')
-plt.plot(travel_time_results_cbd_only['year_month'], travel_time_results_cbd_only['average_response_time'], marker='o', label='Average Response Time (s)')
+plt.plot(travel_time_results_cbd_only_life_threat['year_month'], travel_time_results_cbd_only_life_threat['average_travel_time'], marker='o', label='Average Travel Time for Life-Threatening (s)')
+plt.plot(travel_time_results_cbd_only_life_threat['year_month'], travel_time_results_cbd_only_life_threat['average_response_time'], marker='o', label='Average Response Time for Life-Threatening (s)')
 
-plt.title('CBD Average EMS Travel and Response Times by Month/Year')
+plt.plot(travel_time_results_cbd_only_non_life_threat['year_month'], travel_time_results_cbd_only_non_life_threat['average_travel_time'], marker='o', label='Average Travel Time for Non Life-Threatening (s)')
+plt.plot(travel_time_results_cbd_only_non_life_threat['year_month'], travel_time_results_cbd_only_non_life_threat['average_response_time'], marker='o', label='Average Response Time for Non Life-Threatening (s)')
+
+plt.title('CBD Average EMS Travel and Response Times by Month/Year and by Severity')
 plt.xlabel('Month')
 plt.ylabel('Seconds')
 plt.legend()
