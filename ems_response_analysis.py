@@ -17,7 +17,7 @@ class EMS(Enum):
     MYSTERY_ACTIVATION = -98 #graph in time spent between assignment and activation
 
 #set decision value from above
-GRAPH_DECISION = EMS.TIME_DISPATCH
+GRAPH_DECISION = EMS.TIME_SEC
 
 #CREATE DATABASE, WILL BE CLOSED AT THE END OF RUN
 duck_ems_connect = duckdb.connect(database="ems.duckdb") 
@@ -174,7 +174,7 @@ travel_time_results = travel_time_results[travel_time_results['year'].isin(list_
 
 print(travel_time_results)
 
-travel_time_results.to_csv("ems_response_time_data.csv", index=False)
+# travel_time_results.to_csv("ems_response_time_datas.csv", index=False)
 
 for area in ["cbd", "non_cbd_mnh", "bronx", "brooklyn", "queens", "staten_island"]:
 
@@ -243,8 +243,6 @@ for area in ["cbd", "non_cbd_mnh", "bronx", "brooklyn", "queens", "staten_island
         plt.ylabel('Percent')
     else:
         plt.ylabel('Seconds')
-
-        
 
     #set year interval to be every year manually
     ax = plt.gca()
