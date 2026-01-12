@@ -11,12 +11,13 @@ list_of_years = [# 2015, 2016, 2017, 2018,
 
 #ENUMERATE DECISION VALUES FOR GRAPHING IN SECONDS OR PROPORTION
 class EMS(Enum):
-    TIME_SEC = -101 #graph in values of seconds for dispatch and travel
-    PCT_DISPATCH = -100 #graph in percentage of total time spent in dispatch
-    MYSTERY_ACTIVATION = -99 #graph in time spent between assignment and activation
+    TIME_SEC = -101 #graph in values of seconds for total response time and travel
+    PCT_DISPATCH = -100 #graph in percentage of total time spent in dispatch, both calculated and official
+    TIME_DISPATCH = -99 #graph in number of seconds spent in dispatch, both calculated and official
+    MYSTERY_ACTIVATION = -98 #graph in time spent between assignment and activation
 
 #set decision value from above
-GRAPH_DECISION = EMS.TIME_SEC
+GRAPH_DECISION = EMS.TIME_DISPATCH
 
 #CREATE DATABASE, WILL BE CLOSED AT THE END OF RUN
 duck_ems_connect = duckdb.connect(database="ems.duckdb") 
@@ -140,6 +141,14 @@ travel_time_results = duck_ems_connect.execute(f"""
         ) AS average_response_time,
 
         AVG(
+            CASE
+                WHEN DISPATCH_RESPONSE_SECONDS_QY_INT != 0
+                THEN DISPATCH_RESPONSE_SECONDS_QY_INT
+                ELSE NULL
+            END
+        ) AS average_official_dispatch_time,
+
+        AVG(
             EXTRACT(
                 EPOCH FROM (
                 FIRST_ACTIVATION_DATETIME - FIRST_ASSIGNMENT_DATETIME
@@ -156,7 +165,9 @@ travel_time_results = duck_ems_connect.execute(f"""
 """).fetchdf()
 
 #GET THE PERCENT OF TIME SPENT IN DISPATCH
-travel_time_results["pct_time_dispatch"] = ( travel_time_results["average_response_time"] - travel_time_results["average_travel_time"] ) / ( travel_time_results["average_response_time"] ) * 100
+travel_time_results["average_calculated_dispatch_time"] = ( travel_time_results["average_response_time"] - travel_time_results["average_travel_time"] )
+travel_time_results["average_pct_time_calculated_dispatch"] = ( travel_time_results["average_calculated_dispatch_time"] ) / ( travel_time_results["average_response_time"] ) * 100
+travel_time_results["average_pct_time_official_dispatch"] = ( travel_time_results["average_official_dispatch_time"] ) / ( travel_time_results["average_response_time"] ) * 100
 
 #CUT OFF TO ONLY YEARS OF INTEREST
 travel_time_results = travel_time_results[travel_time_results['year'].isin(list_of_years)]
@@ -192,13 +203,29 @@ for area in ["cbd", "non_cbd_mnh", "bronx", "brooklyn", "queens", "staten_island
 
     if GRAPH_DECISION == EMS.PCT_DISPATCH:
 
-        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_life_threat['pct_time_dispatch'], marker='o', label='Average Pct of Time Spent in Dispatch for Life-Threatening (s)')
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_life_threat['average_pct_time_calculated_dispatch'], marker='o', label='Average Calculated Pct of Time Spent in Dispatch for Life-Threatening (%)')
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_non_life_threat['average_pct_time_calculated_dispatch'], marker='o', label='Average Calculated Pct of Time Spent in Dispatch for Non Life-Threatening (%)')
 
-        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_non_life_threat['pct_time_dispatch'], marker='o', label='Average Pct of Time Spent in Dispatch for Non Life-Threatening (s)')
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_life_threat['average_pct_time_official_dispatch'], marker='o', label='Average Official Pct of Time Spent in Dispatch for Life-Threatening (%)')
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_non_life_threat['average_pct_time_official_dispatch'], marker='o', label='Average Official Pct of Time Spent in Dispatch for Non Life-Threatening (%)')
+
 
         plt.title(f'{area} Average EMS Proportion of Time Spent in Dispatch by Month/Year and by Severity')
 
         plt.ylim(0, 65)
+
+    if GRAPH_DECISION == EMS.TIME_DISPATCH:
+
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_life_threat['average_calculated_dispatch_time'], marker='o', label='Average Calculated Time Spent in Dispatch for Life-Threatening (s)')
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_non_life_threat['average_calculated_dispatch_time'], marker='o', label='Average Calculated Time Spent in Dispatch for Non Life-Threatening (s)')
+
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_life_threat['average_official_dispatch_time'], marker='o', label='Average Official Time Spent in Dispatch for Life-Threatening (s)')
+        plt.plot(travel_time_results_by_area_life_threat['year_month'], travel_time_results_by_area_non_life_threat['average_official_dispatch_time'], marker='o', label='Average Official Time Spent in Dispatch for Non Life-Threatening (s)')
+
+
+        plt.title(f'{area} Average EMS Time Spent in Dispatch by Month/Year and by Severity')
+
+        plt.ylim(0, 1500)
 
     if GRAPH_DECISION == EMS.MYSTERY_ACTIVATION:
 
@@ -211,7 +238,13 @@ for area in ["cbd", "non_cbd_mnh", "bronx", "brooklyn", "queens", "staten_island
         plt.ylim(20, 60)
 
     plt.xlabel('Year')
-    plt.ylabel('Seconds')
+
+    if GRAPH_DECISION == EMS.PCT_DISPATCH:
+        plt.ylabel('Percent')
+    else:
+        plt.ylabel('Seconds')
+
+        
 
     #set year interval to be every year manually
     ax = plt.gca()
