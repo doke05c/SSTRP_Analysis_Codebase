@@ -42,6 +42,33 @@ if (not (parquet_path.exists())):
 
 #ACTUAL ANALYSIS BEGINS HERE
 
+eastbound_125, westbound_125 = duck_od_connect.execute(f"""
+    SELECT
+        SUM(
+            CASE
+                WHEN
+                    "Origin Station Complex Name" = '125 St (1)'
+                    AND "Destination Station Complex Name" = '125 St (4,5,6)'
+                THEN "Estimated Average Ridership"
+                ELSE 0
+            END
+        ) AS eastbound_125,
+
+        SUM(
+            CASE
+                WHEN
+                    "Origin Station Complex Name" = '125 St (4,5,6)'
+                    AND "Destination Station Complex Name" = '125 St (1)'
+                THEN "Estimated Average Ridership"
+                ELSE 0
+            END
+        ) AS westbound_125
+
+    FROM {table_name}
+""").fetchone()
+
+print("Number of Westbound Subway Trips in 2024 Between (1) and (4/5/6) on 125th:", westbound_125)
+print("Number of Eastbound Subway Trips in 2024 Between (1) and (4/5/6) on 125th:", eastbound_125)
 
 #CLOSE DATABASE
 duck_od_connect.close()
