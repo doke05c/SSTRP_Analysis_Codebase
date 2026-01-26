@@ -81,6 +81,35 @@ duck_od_connect.execute("""
     INSERT INTO regions (region_name, geom)
     VALUES
     (
+        'uws_58_to_125',
+        ST_GeomFromText(
+            'POLYGON ((
+                -73.9682007 40.8131596,
+                -73.9962244 40.7735056,
+                -73.9810538 40.7671354,
+                -73.9571500 40.8009622,
+                -73.9609480 40.8026514,
+                -73.9573431 40.8091807,
+                -73.9682007 40.8131596
+            ))'
+        )
+    ),
+
+    (
+        'ues_58_to_96',
+        ST_GeomFromText(
+            'POLYGON ((
+                -73.9557552 40.7898997,
+                -73.9742088 40.7638363,
+                -73.9578152 40.7574326,
+                -73.9576435 40.7574326,
+                -73.9399624 40.7832386,
+                -73.9557552 40.7898997
+            ))'
+        )
+    ),
+
+    (
         'west_harlem_125_to_149',
         ST_GeomFromText(
             'POLYGON ((
@@ -93,7 +122,6 @@ duck_od_connect.execute("""
             ))'
         )
     ),
-
     (
         'east_harlem_96_to_131',
         ST_GeomFromText(
@@ -187,7 +215,7 @@ duck_od_connect.execute("""
 #     FROM {table_name}
 # """).fetchone()
 
-west_to_east, east_to_west, west_harlem_to_east_harlem, east_harlem_to_west_harlem = duck_od_connect.execute(f"""
+west_to_east, east_to_west, west_harlem_to_east_harlem, east_harlem_to_west_harlem, upper_west_to_upper_east, upper_east_to_upper_west = duck_od_connect.execute(f"""
 
 SELECT
     SUM(
@@ -224,7 +252,25 @@ SELECT
             THEN "Estimated Average Ridership"
             ELSE 0
         END
-    ) AS east_harlem_to_west_harlem
+    ) AS east_harlem_to_west_harlem,
+
+    SUM(
+        CASE
+            WHEN ST_Within(origin_geom, (SELECT geom FROM regions WHERE region_name = 'uws_58_to_125'))
+            AND ST_Within(destination_geom, (SELECT geom FROM regions WHERE region_name = 'ues_58_to_96'))
+            THEN "Estimated Average Ridership"
+            ELSE 0
+        END
+    ) AS upper_west_to_upper_east,
+
+    SUM(
+        CASE
+            WHEN ST_Within(origin_geom, (SELECT geom FROM regions WHERE region_name = 'ues_58_to_96'))
+            AND ST_Within(destination_geom, (SELECT geom FROM regions WHERE region_name = 'uws_58_to_125'))
+            THEN "Estimated Average Ridership"
+            ELSE 0
+        END
+    ) AS upper_east_to_upper_west
 
 FROM {table_name};
 """).fetchone()
@@ -234,6 +280,9 @@ print("Apprx Number of Eastbound Subway Trips in 2024 Between Upper West (59-145
 print("Apprx Number of Westbound Subway Trips in 2024 Between Upper East (59-125) and Upper West (59-145):", east_to_west * 4.348)
 print("Apprx Number of Eastbound Subway Trips in 2024 Between West Harlem (125-145) and East Harlem (96-131):", west_harlem_to_east_harlem * 4.348)
 print("Apprx Number of Westbound Subway Trips in 2024 Between East Harlem (96-131) and West Harlem (125-145):", east_harlem_to_west_harlem * 4.348)
+print("Apprx Number of Eastbound Subway Trips in 2024 Between Upper West Side (59-125) and Upper East Side (59-96):", upper_west_to_upper_east * 4.348)
+print("Apprx Number of Westbound Subway Trips in 2024 Between Upper East Side (59-96) and Upper West Side (59-125):", upper_east_to_upper_west * 4.348)
+
 
 #CLOSE DATABASE
 duck_od_connect.close()
