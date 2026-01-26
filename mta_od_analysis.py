@@ -8,6 +8,10 @@ import matplotlib.dates as mdates #use mdates to set year intervals manually
 #CREATE DATABASE, WILL BE CLOSED AT THE END OF RUN
 duck_od_connect = duckdb.connect(database="od.duckdb") 
 
+#ENABLE SPATIAL ELEMENT DUCKDB
+duck_od_connect.execute("INSTALL spatial;")
+duck_od_connect.execute("LOAD spatial;")
+
 #MAKE NAME FOR SQL/DUCKDB TABLE (makes port from previous analyses more convenient)
 table_name = "OD_TABLE"
 
@@ -40,35 +44,148 @@ if (not (parquet_path.exists())):
         FROM read_parquet('{parquet_path}')
     """)
 
+    #ADD GEOMETRY COLUMN FOR ORIGIN POINT
+    duck_od_connect.execute(f"""
+        ALTER TABLE {table_name}
+        ADD COLUMN origin_geom GEOMETRY;
+
+        UPDATE {table_name}
+        SET origin_geom = ST_GeomFromText("Origin Point");
+    """)
+
+    #ADD GEOMETRY COLUMN FOR DESTINATION POINT
+    duck_od_connect.execute(f"""
+        ALTER TABLE {table_name}
+        ADD COLUMN destination_geom GEOMETRY;
+
+        UPDATE {table_name}
+        SET destination_geom = ST_GeomFromText("Destination Point");
+    """)
+
+
 #ACTUAL ANALYSIS BEGINS HERE
 
-eastbound_125, westbound_125 = duck_od_connect.execute(f"""
-    SELECT
-        SUM(
-            CASE
-                WHEN
-                    "Origin Station Complex Name" = '125 St (1)'
-                    AND "Destination Station Complex Name" = '125 St (4,5,6)'
-                THEN "Estimated Average Ridership"
-                ELSE 0
-            END
-        ) AS eastbound_125,
+#make table "regions" to store every predefined polygon we use
+duck_od_connect.execute(f"""
 
-        SUM(
-            CASE
-                WHEN
-                    "Origin Station Complex Name" = '125 St (4,5,6)'
-                    AND "Destination Station Complex Name" = '125 St (1)'
-                THEN "Estimated Average Ridership"
-                ELSE 0
-            END
-        ) AS westbound_125
+    CREATE TABLE IF NOT EXISTS regions (
+        region_name VARCHAR,
+        geom GEOMETRY
+    );
 
-    FROM {table_name}
+""")
+
+#insert polygons into regions
+duck_od_connect.execute("DELETE FROM regions;")
+duck_od_connect.execute("""
+    INSERT INTO regions (region_name, geom)
+    VALUES
+    (
+        'west_side_58_to_149',
+        ST_GeomFromText(
+            'POLYGON ((
+                -73.9563346 40.8323689,
+                -73.9982629 40.7740094,
+                -73.9812684 40.7668754,
+                -73.9394474 40.82516,
+                -73.9563346 40.8323689
+            ))'
+        )
+    ),
+    (
+        'east_side_58_to_131',
+        ST_GeomFromText(
+            'POLYGON ((
+                -73.9399409 40.8103663,
+                -73.9740372 40.7638525,
+                -73.9564848 40.7566687,
+                -73.9224315 40.8034636,
+                -73.9399409 40.8103663
+            ))'
+        )
+    );
+""")
+
+#get all the stations in the "west side" polygon
+# list_of_west_side_stations = duck_od_connect.execute(f"""
+# SELECT DISTINCT
+#     od."Origin Station Complex Name" AS origin_station_name
+# FROM {table_name} od
+# JOIN regions r
+#   ON r.region_name = 'west_side_58_to_149'
+#  AND ST_Within(od.origin_geom, r.geom)
+# ORDER BY origin_station_name;
+# """).fetchall()
+
+# #get all the stations in the "east side" polygon
+# list_of_east_side_stations = duck_od_connect.execute(f"""
+# SELECT DISTINCT
+#     od."Origin Station Complex Name" AS origin_station_name
+# FROM {table_name} od
+# JOIN regions r
+#   ON r.region_name = 'east_side_58_to_131'
+#  AND ST_Within(od.origin_geom, r.geom)
+# ORDER BY origin_station_name;
+# """).fetchall()
+
+# print("List of Stations in the Upper West Side up to 145th St:", list_of_west_side_stations)
+# print("List of Stations in the Upper East Side up to 125th St:", list_of_east_side_stations)
+
+# tot_sum, southbound_125, northbound_125 = duck_od_connect.execute(f"""
+#     SELECT
+
+#         COUNT(*) AS tot_sum,
+
+#         SUM(
+#             CASE
+#                 WHEN
+#                     "Origin Station Complex Name" = '125 St (1)'
+#                     AND "Destination Station Complex Name" = '34 St-Penn Station (1,2,3)'
+#                 THEN "Estimated Average Ridership"
+#                 ELSE 0
+#             END
+#         ) AS southbound_125,
+
+#         SUM(
+#             CASE
+#                 WHEN
+#                     "Origin Station Complex Name" = '34 St-Penn Station (1,2,3)'
+#                     AND "Destination Station Complex Name" = '125 St (1)'
+#                 THEN "Estimated Average Ridership"
+#                 ELSE 0
+#             END
+#         ) AS northbound_125
+
+#     FROM {table_name}
+# """).fetchone()
+
+west_to_east, east_to_west = duck_od_connect.execute(f"""
+
+SELECT
+    SUM(
+        CASE
+            WHEN ST_Within(origin_geom, (SELECT geom FROM regions WHERE region_name = 'west_side_58_to_149'))
+            AND ST_Within(destination_geom, (SELECT geom FROM regions WHERE region_name = 'east_side_58_to_131'))
+            THEN "Estimated Average Ridership"
+            ELSE 0
+        END
+    ) AS west_to_east,
+
+    SUM(
+        CASE
+            WHEN ST_Within(origin_geom, (SELECT geom FROM regions WHERE region_name = 'east_side_58_to_131'))
+            AND ST_Within(destination_geom, (SELECT geom FROM regions WHERE region_name = 'west_side_58_to_149'))
+            THEN "Estimated Average Ridership"
+            ELSE 0
+        END
+    ) AS east_to_west
+
+FROM {table_name};
 """).fetchone()
 
-print("Number of Westbound Subway Trips in 2024 Between (1) and (4/5/6) on 125th:", westbound_125)
-print("Number of Eastbound Subway Trips in 2024 Between (1) and (4/5/6) on 125th:", eastbound_125)
+# print("Number of rows taken in:", tot_sum)
+print("Apprx Number of Eastbound Subway Trips in 2024 Between Upper West (59-145) and Upper East (59-125):", west_to_east * 4.348)
+print("Apprx Number of Westbound Subway Trips in 2024 Between Upper East (59-125) and Upper West (59-145):", east_to_west * 4.348)
 
 #CLOSE DATABASE
 duck_od_connect.close()
