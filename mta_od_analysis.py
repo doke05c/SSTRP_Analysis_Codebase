@@ -203,54 +203,52 @@ if not flow_path.exists():
     import pandas as pd
     pd.DataFrame(flow_matrix, columns=['origin_region', 'destination_region', 'annual_ridership_estimate']).to_parquet(flow_path)
 
+    #CONVERT TO DICT, KEY IS (ORIGIN, DESTINATION), WHILE FLOW_MATRIX IS STILL A VARIABLE
+    flow_dict = {
+        (origin, dest): value
+        for origin, dest, value in flow_matrix
+    }
+
 else:
     #IF EXISTS, JUST READ FROM DISK
     import pandas as pd
     flow_matrix = pd.read_parquet(flow_path)
+    
+    #CONVERT TO DICT, KEY IS (ORIGIN, DESTINATION), AFTER WE RUN PROGRAM WITHOUT LONG PROCESSING PHASE
+    flow_dict = {
+        (origin, dest): value
+        for origin, dest, value in flow_matrix.itertuples(index=False, name=None)
+    }
 
 
 #ACTUAL ANALYSIS BEGINS HERE
 
-#TURN FLOW MATRIX INTO A DICTIONARY WITH (ORIGIN, DESTINATION) KEY
-flow_dict = {
-    (origin, dest): value
-    for origin, dest, value in flow_matrix
-}
-
 print(flow_dict)
 
 
-#DEFINE RELATIONAL TRAVEL PATTERNS BETWEEN POLYGONAL REGIONS
+#LIST QUANTITIES OF RELATIONAL TRAVEL PATTERNS BETWEEN POLYGONAL REGIONS
 
-#PATTERNS FROM THE ENTIRE WEST SIDE
-west_to_midtown, west_to_east, 
+#DICTIONARY TO TURN INTERNAL NAMES TO NICER NAMES FOR PRINTING
+region_labels = {
+    'west_side_58_to_149': 'West Side (58-145)',
+    'east_side_58_to_131': 'East Side (58-125)',
+    'midtown_21_to_57': 'Midtown (21-57)',
+    'uws_58_to_125': 'Upper West Side (58-125)',
+    'ues_58_to_96': 'Upper East Side (58-96)',
+    'west_harlem_125_to_149': 'West Harlem (125-145)',
+    'east_harlem_96_to_131': 'East Harlem (97-125)'
+}
 
-#PATTERNS FROM THE ENTIRE EAST SIDE
-east_to_midtown, east_to_west, 
+#LOOP THROUGH FLOW_DICT AND REGION_LABELS TO PRINT OUT NUMBERS
+for (origin, destination), trips in flow_dict.items():
 
-#PATTENRS FROM WEST HARLEM
-west_harlem_to_east_harlem, west_harlem_to_upper_east, west_harlem_to_midtown, 
+    #ORIGIN NAME IS PRETTIFIED VERSION OF ORIGIN INTERNAL NAME, ELSE: DEFAULT TO INTERNAL ORIGIN NAME
+    origin_name = region_labels.get(origin, origin)
 
-#PATTERNS FROM EAST HARLEM
-east_harlem_to_west_harlem, east_harlem_to_upper_west, east_harlem_to_midtown, 
+    #ORIGIN NAME IS PRETTIFIED VERSION OF DESTINATION INTERNAL NAME, ELSE: DEFAULT TO INTERNAL DESTINATION NAME
+    destination_name = region_labels.get(destination, destination)
 
-#PATTERNS FROM UPPER WEST SIDE
-upper_west_to_upper_east, upper_west_to_east_harlem, upper_west_to_midtown, 
-
-#PATTERNS FROM UPPER EAST SIDE
-upper_east_to_upper_west, upper_east_to_midtown, upper_east_to_west_harlem,
-
-#PATTERNS FROM MIDTOWN
-midtown_to_upper_west, midtown_to_upper_east, midtown_to_west_harlem, midtown_to_east_harlem, midtown_to_west, midtown_to_east
-
-#TODO: SET VALUES FROM THE FLOW MATRIX INTO THESE VARIABLES ^^
-
-print("Apprx Number of Eastbound Subway Trips in 2024 Between Upper West (59-145) and Upper East (59-125):", west_to_east)
-print("Apprx Number of Westbound Subway Trips in 2024 Between Upper East (59-125) and Upper West (59-145):", east_to_west)
-print("Apprx Number of Eastbound Subway Trips in 2024 Between West Harlem (125-145) and East Harlem (96-131):", west_harlem_to_east_harlem)
-print("Apprx Number of Westbound Subway Trips in 2024 Between East Harlem (96-131) and West Harlem (125-145):", east_harlem_to_west_harlem)
-print("Apprx Number of Eastbound Subway Trips in 2024 Between Upper West Side (59-125) and Upper East Side (59-96):", upper_west_to_upper_east)
-print("Apprx Number of Westbound Subway Trips in 2024 Between Upper East Side (59-96) and Upper West Side (59-125):", upper_east_to_upper_west)
+    print(f"{origin_name} to {destination_name} Estimated Trip Count in 2024: {int(trips):,} trips")
 
 
 #CLOSE DATABASE
