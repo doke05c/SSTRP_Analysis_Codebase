@@ -115,7 +115,7 @@ if (not (parquet_path.exists())):
         cb_output_to_string += ";"
 
     #insert polygons into regions
-    duck_od_connect.execute("""
+    duck_od_connect.execute(f"""
         INSERT INTO regions (region_name, geom)
         VALUES
         {cb_output_to_string}
