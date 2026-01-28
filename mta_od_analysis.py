@@ -4,6 +4,25 @@ from matplotlib import pyplot as plt #plotting library to graph info visually
 from enum import Enum #make enumerated keywords (words with numerical values)
 import pandas as pd #pandas to work with smaller result summary tables
 import matplotlib.dates as mdates #use mdates to set year intervals manually
+import json #to read and parse geojson files of certain areas
+
+#boro names matched to boro codes
+boroughs = {
+    "1": "Manhattan",
+    "2": "Bronx",
+    "3": "Brooklyn",
+    "4": "Queens",
+    "5": "Staten Island"
+}
+
+#number of community boards per borough
+district_counts = {
+    "1": 12,   # Manhattan CBs 1–12
+    "2": 12,   # Bronx CBs 1–12
+    "3": 18,   # Brooklyn CBs 1–18
+    "4": 14,   # Queens CBs 1–14
+    "5": 3     # Staten Island CBs 1–3
+}
 
 #CREATE DATABASE, WILL BE CLOSED AT THE END OF RUN
 duck_od_connect = duckdb.connect(database="od.duckdb") 
@@ -72,103 +91,34 @@ if (not (parquet_path.exists())):
 
     """)
 
+    #IMPORT CBS JSON AND CONVERT CONTENT TO WKT BOROCD - COORDINATE STRING FOR REGION TABLE CREATION
+    with open("nyc_cbs.json", "r") as f:
+        data = json.load(f)
+
+        rows = data["data"]
+
+        cb_output_to_string = ""
+
+        for row in rows:
+            # columns based on the file structure
+            boro_cd = row[8]         # Boro+Cd
+            wkt = row[11]            # the_geom (already WKT)
+
+            cb_output_to_string+=(f"""
+        (
+        'cb_{boro_cd}',
+        ST_GeomFromText('{wkt}')
+        ),
+        """)
+
+        cb_output_to_string = cb_output_to_string.rstrip(",\n")
+        cb_output_to_string += ";"
+
     #insert polygons into regions
     duck_od_connect.execute("""
         INSERT INTO regions (region_name, geom)
         VALUES
-        (
-            'midtown_21_to_57',
-            ST_GeomFromText(
-                'POLYGON ((
-                    -73.9917397 40.7709869,
-                    -74.0090561 40.7482486,
-                    -73.9724278 40.7329174,
-                    -73.9570427 40.7560998,
-                    -73.9917397 40.7709869
-                ))'
-            )
-        ),
-
-        (
-            'uws_58_to_125',
-            ST_GeomFromText(
-                'POLYGON ((
-                    -73.9682007 40.8131596,
-                    -73.9962244 40.7735056,
-                    -73.9810538 40.7671354,
-                    -73.9571500 40.8009622,
-                    -73.9609480 40.8026514,
-                    -73.9573431 40.8091807,
-                    -73.9682007 40.8131596
-                ))'
-            )
-        ),
-
-        (
-            'ues_58_to_96',
-            ST_GeomFromText(
-                'POLYGON ((
-                    -73.9557552 40.7898997,
-                    -73.9742088 40.7638363,
-                    -73.9578152 40.7574326,
-                    -73.9576435 40.7574326,
-                    -73.9399624 40.7832386,
-                    -73.9557552 40.7898997
-                ))'
-            )
-        ),
-
-        (
-            'west_harlem_125_to_149',
-            ST_GeomFromText(
-                'POLYGON ((
-                    -73.9542317 40.8310863,
-                    -73.9665270 40.8153358,
-                    -73.9584696 40.8122745,
-                    -73.9506269 40.8090914,
-                    -73.9394689 40.8251438,
-                    -73.9542317 40.8310863
-                ))'
-            )
-        ),
-        (
-            'east_harlem_96_to_131',
-            ST_GeomFromText(
-                'POLYGON (( 
-                -73.9397478 40.8104150, 
-                -73.9557552 40.7898997, 
-                -73.9378810 40.782104, 
-                -73.9200497 40.8024403, 
-                -73.9397478 40.8104150 
-                ))'
-            )
-        ),
-
-        (
-            'west_side_58_to_149',
-            ST_GeomFromText(
-                'POLYGON ((
-                    -73.9563346 40.8323689,
-                    -73.9982629 40.7740094,
-                    -73.9812684 40.7668754,
-                    -73.9394474 40.82516,
-                    -73.9563346 40.8323689
-                ))'
-            )
-        ),
-
-        (
-            'east_side_58_to_131',
-            ST_GeomFromText(
-                'POLYGON ((
-                    -73.9399409 40.8103663,
-                    -73.9740372 40.7638525,
-                    -73.9564848 40.7566687,
-                    -73.9224315 40.8034636,
-                    -73.9399409 40.8103663
-                ))'
-            )
-        );
+        {cb_output_to_string}
     """)
 
 #define a flow matrix from r1 (all regions) to r2 (same list of all regions, aka all possibilites), (also includes "within" category), taken from od table
@@ -223,21 +173,22 @@ else:
 
 #ACTUAL ANALYSIS BEGINS HERE
 
-print(flow_dict)
+# print(flow_dict)
 
 
 #LIST QUANTITIES OF RELATIONAL TRAVEL PATTERNS BETWEEN POLYGONAL REGIONS
 
 #DICTIONARY TO TURN INTERNAL NAMES TO NICER NAMES FOR PRINTING
-region_labels = {
-    'west_side_58_to_149': 'West Side (58-145)',
-    'east_side_58_to_131': 'East Side (58-125)',
-    'midtown_21_to_57': 'Midtown (21-57)',
-    'uws_58_to_125': 'Upper West Side (58-125)',
-    'ues_58_to_96': 'Upper East Side (58-96)',
-    'west_harlem_125_to_149': 'West Harlem (125-145)',
-    'east_harlem_96_to_131': 'East Harlem (97-125)'
-}
+region_labels = {}
+
+#FILL REGION_LABELS WITH NAMES
+for boro_code, boro_name in boroughs.items():
+    for cd in range(1, district_counts[boro_code] + 1):
+        cd_str = f"{cd:02d}"   # zero-pad (01, 02, ...)
+        key = f"cb_{boro_code}{cd_str}"
+        value = f"{boro_name} Community Board {cd}"
+
+        region_labels[key] = value
 
 #LOOP THROUGH FLOW_DICT AND REGION_LABELS TO PRINT OUT NUMBERS
 for (origin, destination), trips in flow_dict.items():
