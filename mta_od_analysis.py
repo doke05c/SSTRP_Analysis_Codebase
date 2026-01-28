@@ -5,6 +5,7 @@ from enum import Enum #make enumerated keywords (words with numerical values)
 import pandas as pd #pandas to work with smaller result summary tables
 import matplotlib.dates as mdates #use mdates to set year intervals manually
 import json #to read and parse geojson files of certain areas
+import re #regex for char/pattern recognition
 
 #boro names matched to boro codes
 boroughs = {
@@ -173,7 +174,7 @@ else:
 
 #ACTUAL ANALYSIS BEGINS HERE
 
-# print(flow_dict)
+print(flow_dict)
 
 
 #LIST QUANTITIES OF RELATIONAL TRAVEL PATTERNS BETWEEN POLYGONAL REGIONS
@@ -190,6 +191,13 @@ for boro_code, boro_name in boroughs.items():
 
         region_labels[key] = value
 
+#RENAMINGS BASED ON OBSERVED GEOMETRIES
+region_labels["cb_164"] = "Central Park"
+region_labels["cb_355"] = "Prospect Park"
+region_labels["cb_481"] = "Flushing Meadows-Corona Park"
+region_labels["cb_483"] = "JFK Airport"
+
+
 #LOOP THROUGH FLOW_DICT AND REGION_LABELS TO PRINT OUT NUMBERS
 for (origin, destination), trips in flow_dict.items():
 
@@ -199,8 +207,37 @@ for (origin, destination), trips in flow_dict.items():
     #ORIGIN NAME IS PRETTIFIED VERSION OF DESTINATION INTERNAL NAME, ELSE: DEFAULT TO INTERNAL DESTINATION NAME
     destination_name = region_labels.get(destination, destination)
 
-    print(f"{origin_name} to {destination_name} Estimated Trip Count in 2024: {int(trips):,} trips")
+    if (origin_name == "Manhattan Community Board 7"):
+        print(f"{origin_name} to {destination_name} Estimated Trip Count in 2024: {int(trips):,} trips")
 
+
+
+#TABLE-IZE DATA
+
+
+def sort_key(name):
+    area_match = re.match(r"(\w+) Community Board (\d+)", name)
+    if area_match:
+        borough, num = area_match.groups()
+        return (borough, int(num))
+    else:
+        return (name, 0) #for parks/airport
+
+#CONVERT FLOW DICT TO DATAFRAME
+df_long = pd.DataFrame(
+    [(region_labels.get(origin, origin), region_labels.get(destination, destination), value) for (origin, destination), value in flow_dict.items()],
+    columns=["origin", "destination", "annual_ridership"]
+)
+
+#PIVOT TO 2D
+df_matrix = df_long.pivot(index="origin", columns="destination", values="annual_ridership")
+
+df_matrix = df_matrix.reindex(sorted(df_matrix.index, key=sort_key))
+df_matrix = df_matrix.reindex(sorted(df_matrix.columns, key=sort_key), axis=1)
+
+
+# EXPORT TO CSV
+# df_matrix.to_csv("2024_flow_matrix_2d.csv")
 
 #CLOSE DATABASE
 duck_od_connect.close()
