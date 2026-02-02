@@ -128,19 +128,48 @@ if (not (parquet_path.exists())):
 # ONLY COMPUTE FLOWS IF THEY DONT EXIST YET
 flow_path = Path("flow_matrix.parquet")
 if not flow_path.exists():
+    
+    #remove the CBs that are parks, these eat up stations near central park, prospect park, etc.
 
+    #after that, calculate the nearest cb to each station (if station ends up outside the official cb boundary)
+
+    #THEN calculate flow matrix
     flow_matrix = duck_od_connect.execute(f"""
-        WITH od_labeled AS (
+        WITH regions_no_parks AS (
+        SELECT *
+        FROM regions
+        WHERE region_name NOT IN ('cb_164', 'cb_355', 'cb_481', 'cb_483')
+        )
+        , origin_nearest AS (
             SELECT
-                r1.region_name AS origin_region,
-                r2.region_name AS destination_region,
+                od.origin_geom,
+                r.region_name AS origin_region,
+                ST_Distance(od.origin_geom, r.geom) AS distance
+            FROM {table_name} od
+            CROSS JOIN regions_no_parks r
+            QUALIFY distance = MIN(distance) OVER (PARTITION BY od.origin_geom)
+        )
+        , destination_nearest AS (
+            SELECT
+                od.destination_geom,
+                r.region_name AS destination_region,
+                ST_Distance(od.destination_geom, r.geom) AS distance
+            FROM {table_name} od
+            CROSS JOIN regions_no_parks r
+            QUALIFY distance = MIN(distance) OVER (PARTITION BY od.destination_geom)
+        )
+        , od_labeled AS (
+            SELECT
+                o.origin_region,
+                d.destination_region,
                 od."Estimated Average Ridership" AS ridership
             FROM {table_name} od
-            JOIN regions r1
-            ON ST_Within(od.origin_geom, r1.geom)
-            JOIN regions r2
-            ON ST_Within(od.destination_geom, r2.geom)
+            JOIN origin_nearest o
+            ON od.origin_geom = o.origin_geom
+            JOIN destination_nearest d
+            ON od.destination_geom = d.destination_geom
         )
+
         SELECT
             origin_region,
             destination_region,
@@ -213,7 +242,6 @@ for (origin, destination), trips in flow_dict.items():
 
 
 #TABLE-IZE DATA
-
 
 def sort_key(name):
     area_match = re.match(r"(\w+) Community Board (\d+)", name)
