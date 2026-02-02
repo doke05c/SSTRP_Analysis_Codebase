@@ -136,8 +136,37 @@ first_30_test = duck_taxi_connect.execute(f"""
     LIMIT 30;
 """).fetchall()
 
-print(first_30_test)
 
+taxi_crash_yearly = duck_taxi_connect.execute(f"""
+    SELECT
+        EXTRACT(YEAR FROM STRPTIME("CRASH DATE", '%m/%d/%Y')) AS crash_year,
+        COUNT(*) AS taxi_count,
+        COUNT(CASE 
+                WHEN ("community_board" IN ('cb_101','cb_102','cb_103','cb_104','cb_105','cb_106')) 
+                THEN 1 
+            END) AS taxi_count_cbd,
+        COUNT(CASE 
+                WHEN ("community_board" NOT IN ('cb_101','cb_102','cb_103','cb_104','cb_105','cb_106')) 
+                THEN 1 
+            END) AS taxi_count_other
+    FROM {table_name}
+    WHERE (
+        "VEHICLE TYPE CODE 1" = 'Taxi' OR
+        "VEHICLE TYPE CODE 2" = 'Taxi' OR
+        "VEHICLE TYPE CODE 3" = 'Taxi' OR
+        "VEHICLE TYPE CODE 4" = 'Taxi' OR
+        "VEHICLE TYPE CODE 5" = 'Taxi'
+        )
+    AND (
+    CAST("NUMBER OF PERSONS INJURED" AS INTEGER) > 0 OR CAST("NUMBER OF PERSONS KILLED" AS INTEGER) > 0
+    )
+    GROUP BY crash_year
+    ORDER BY crash_year;
+""").fetchall()
+
+
+
+print(taxi_crash_yearly)
 
 #CLOSE DATABASE
 duck_taxi_connect.close()
