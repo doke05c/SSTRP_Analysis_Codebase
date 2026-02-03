@@ -131,41 +131,49 @@ if not flow_path.exists():
     
     #remove the CBs that are parks, these eat up stations near central park, prospect park, etc.
 
+    duck_od_connect.execute(f"""
+        CREATE TABLE IF NOT EXISTS regions_no_parks AS (
+            SELECT *
+            FROM regions
+            WHERE region_name NOT IN ('cb_164', 'cb_355', 'cb_481', 'cb_483')
+        );
+    """)
+
     #after that, calculate the nearest cb to each station (if station ends up outside the official cb boundary)
 
+    #ORIGIN
+    duck_od_connect.execute(f"""
+        CREATE TABLE origin_nearest AS
+        SELECT
+            od.origin_geom,
+            r.region_name AS origin_region
+        FROM (SELECT DISTINCT origin_geom FROM {table_name}) od
+        CROSS JOIN regions_no_parks r
+        QUALIFY ST_Distance(od.origin_geom, r.geom) = MIN(ST_Distance(od.origin_geom, r.geom)) OVER (PARTITION BY od.origin_geom);
+    """)
+
+    #DESTINATION
+    duck_od_connect.execute(f"""
+        CREATE TABLE destination_nearest AS
+        SELECT
+            od.destination_geom,
+            r.region_name AS destination_region
+        FROM (SELECT DISTINCT destination_geom FROM {table_name}) od
+        CROSS JOIN regions_no_parks r
+        QUALIFY ST_Distance(od.destination_geom, r.geom) = MIN(ST_Distance(od.destination_geom, r.geom)) OVER (PARTITION BY od.destination_geom);
+    """)
+
     #THEN calculate flow matrix
+    #ST_DWithin guarantees location matching within 0.000001 of a degree of coordinate, allows leeway by a few inches in case of rounding issues.
     flow_matrix = duck_od_connect.execute(f"""
-        WITH regions_no_parks AS (
-        SELECT *
-        FROM regions
-        WHERE region_name NOT IN ('cb_164', 'cb_355', 'cb_481', 'cb_483')
-        )
-        , origin_nearest AS (
-            SELECT
-                od.origin_geom,
-                r.region_name AS origin_region,
-                ST_Distance(od.origin_geom, r.geom) AS distance
-            FROM {table_name} od
-            CROSS JOIN regions_no_parks r
-            QUALIFY distance = MIN(distance) OVER (PARTITION BY od.origin_geom)
-        )
-        , destination_nearest AS (
-            SELECT
-                od.destination_geom,
-                r.region_name AS destination_region,
-                ST_Distance(od.destination_geom, r.geom) AS distance
-            FROM {table_name} od
-            CROSS JOIN regions_no_parks r
-            QUALIFY distance = MIN(distance) OVER (PARTITION BY od.destination_geom)
-        )
-        , od_labeled AS (
+        WITH od_labeled AS (
             SELECT
                 o.origin_region,
                 d.destination_region,
                 od."Estimated Average Ridership" AS ridership
             FROM {table_name} od
             JOIN origin_nearest o
-            ON od.origin_geom = o.origin_geom
+            ON ST_DWithin(od.origin_geom, o.origin_geom, 1e-6)
             JOIN destination_nearest d
             ON od.destination_geom = d.destination_geom
         )
@@ -265,7 +273,7 @@ df_matrix = df_matrix.reindex(sorted(df_matrix.columns, key=sort_key), axis=1)
 
 
 # EXPORT TO CSV
-# df_matrix.to_csv("2024_flow_matrix_2d.csv")
+df_matrix.to_csv("2024_flow_matrix_2d.csv")
 
 #CLOSE DATABASE
 duck_od_connect.close()
