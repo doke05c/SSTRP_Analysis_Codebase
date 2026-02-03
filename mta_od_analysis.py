@@ -211,7 +211,7 @@ else:
 
 #ACTUAL ANALYSIS BEGINS HERE
 
-print(flow_dict)
+# print(flow_dict)
 
 
 #LIST QUANTITIES OF RELATIONAL TRAVEL PATTERNS BETWEEN POLYGONAL REGIONS
@@ -244,10 +244,10 @@ for (origin, destination), trips in flow_dict.items():
     #ORIGIN NAME IS PRETTIFIED VERSION OF DESTINATION INTERNAL NAME, ELSE: DEFAULT TO INTERNAL DESTINATION NAME
     destination_name = region_labels.get(destination, destination)
 
-    if (origin_name == "Manhattan Community Board 7"):
+    if (origin_name == "Manhattan Community Board 7") and ("Manhattan" in destination_name):
         print(f"{origin_name} to {destination_name} Estimated Trip Count in 2024: {int(trips):,} trips")
 
-
+    
 
 #TABLE-IZE DATA
 
@@ -273,7 +273,7 @@ df_matrix = df_matrix.reindex(sorted(df_matrix.columns, key=sort_key), axis=1)
 
 
 # EXPORT TO CSV
-df_matrix.to_csv("2024_flow_matrix_2d.csv")
+# df_matrix.to_csv("2024_flow_matrix_2d.csv")
 
 #CLOSE DATABASE
 duck_od_connect.close()
