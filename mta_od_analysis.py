@@ -163,6 +163,17 @@ if not flow_path.exists():
         QUALIFY ST_Distance(od.destination_geom, r.geom) = MIN(ST_Distance(od.destination_geom, r.geom)) OVER (PARTITION BY od.destination_geom);
     """)
 
+    #EXPORT TO CSV
+    duck_od_connect.execute("""
+        COPY (
+            SELECT *
+            FROM destination_nearest
+        )
+        TO 'test_sta_geom.csv'
+        (FORMAT CSV, HEADER);
+    """)
+
+
     #THEN calculate flow matrix
     #ST_DWithin guarantees location matching within 0.000001 of a degree of coordinate, allows leeway by a few inches in case of rounding issues.
     flow_matrix = duck_od_connect.execute(f"""
