@@ -135,7 +135,7 @@ if not flow_path.exists():
         CREATE TABLE IF NOT EXISTS regions_no_parks AS (
             SELECT *
             FROM regions
-            WHERE region_name NOT IN ('cb_164', 'cb_355', 'cb_481', 'cb_483')
+            WHERE region_name NOT IN ('cb_164', 'cb_226', 'cb_355', 'cb_481', 'cb_483')
         );
     """)
 
@@ -241,6 +241,7 @@ for boro_code, boro_name in boroughs.items():
 
 #RENAMINGS BASED ON OBSERVED GEOMETRIES
 region_labels["cb_164"] = "Central Park"
+region_labels["cb_226"] = "Van Cortlandt Park"
 region_labels["cb_355"] = "Prospect Park"
 region_labels["cb_481"] = "Flushing Meadows-Corona Park"
 region_labels["cb_483"] = "JFK Airport"

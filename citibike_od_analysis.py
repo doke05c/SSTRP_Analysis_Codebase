@@ -68,9 +68,9 @@ if (not (parquet_path.exists())):
                     SELECT *
                     FROM read_csv_auto(
                     '{csv_path}',
-                    types={{'{column_dict[start_ID]}': 'VARCHAR'}}
+                    types={{'{column_dict['start_ID']}': 'VARCHAR'}}
                 )
-            ) TO '2024-citibike-tripdata-full.parquet' (FORMAT PARQUET);
+            ) TO '../../citibike/2024-citibike-tripdata-full.parquet' (FORMAT PARQUET);
         """)
 
     #CREATE DUCKDB TABLE
@@ -82,12 +82,12 @@ if (not (parquet_path.exists())):
 
     #ADD COLUMNS FOR START/END CB, TO BE FILLED LATER BY NEAREST()
 
-    duck_citibike_connect.execute(f"""
+    duck_citi_od_connect.execute(f"""
         ALTER TABLE {table_name}
         ADD COLUMN IF NOT EXISTS {column_dict['start_cb']} VARCHAR;
     """)
 
-    duck_citibike_connect.execute(f"""
+    duck_citi_od_connect.execute(f"""
         ALTER TABLE {table_name}
         ADD COLUMN IF NOT EXISTS {column_dict['end_cb']} VARCHAR;
     """)
@@ -95,19 +95,19 @@ if (not (parquet_path.exists())):
     #ADD GEOMETRY COLUMN FOR ORIGIN POINT
     duck_citi_od_connect.execute(f"""
         ALTER TABLE {table_name}
-        ADD COLUMN {column_dict['origin_geom']} GEOMETRY;
+        ADD COLUMN IF NOT EXISTS {column_dict['origin_geom']} GEOMETRY;
 
         UPDATE {table_name}
-        SET origin_geom = ST_Point({table_name}.{column_dict['start_long']}, {table_name}.{column_dict['start_lat']});
+        SET {column_dict['origin_geom']} = ST_Point({table_name}.{column_dict['start_long']}, {table_name}.{column_dict['start_lat']});
     """)
 
     #ADD GEOMETRY COLUMN FOR DESTINATION POINT
     duck_citi_od_connect.execute(f"""
         ALTER TABLE {table_name}
-        ADD COLUMN {column_dict['destination_geom']} GEOMETRY;
+        ADD COLUMN IF NOT EXISTS {column_dict['destination_geom']} GEOMETRY;
 
         UPDATE {table_name}
-        SET destination_geom = ST_Point({table_name}.{column_dict['end_long']}, {table_name}.{column_dict['end_lat']});
+        SET {column_dict['destination_geom']} = ST_Point({table_name}.{column_dict['end_long']}, {table_name}.{column_dict['end_lat']});
     """)
 
     #make table "regions" to store every predefined polygon we use
@@ -170,24 +170,30 @@ if not flow_path.exists():
 
     #ORIGIN
     duck_citi_od_connect.execute(f"""
-        CREATE TABLE origin_nearest AS
-        SELECT
-            od.{column_dict['origin_geom']},
-            r.region_name AS origin_region
-        FROM (SELECT DISTINCT {column_dict['origin_geom']} FROM {table_name}) od
-        CROSS JOIN regions_no_parks r
-        QUALIFY ST_Distance(od.{column_dict['origin_geom']}, r.geom) = MIN(ST_Distance(od.{column_dict['origin_geom']}, r.geom)) OVER (PARTITION BY od.{column_dict['origin_geom']});
+        CREATE TABLE IF NOT EXISTS origin_nearest AS
+            SELECT
+                od.{column_dict['origin_geom']} AS origin_geom,
+                r.region_name AS origin_region
+            FROM (SELECT DISTINCT {column_dict['origin_geom']} FROM {table_name}) od
+            CROSS JOIN regions_no_parks r
+        QUALIFY
+            ST_Distance(od.{column_dict['origin_geom']}, r.geom)
+            = MIN(ST_Distance(od.{column_dict['origin_geom']}, r.geom))
+            OVER (PARTITION BY od.{column_dict['origin_geom']});
     """)
 
     #DESTINATION
     duck_citi_od_connect.execute(f"""
-        CREATE TABLE destination_nearest AS
-        SELECT
-            od.{column_dict['destination_geom']},
-            r.region_name AS destination_region
-        FROM (SELECT DISTINCT {column_dict['destination_geom']} FROM {table_name}) od
-        CROSS JOIN regions_no_parks r
-        QUALIFY ST_Distance(od.{column_dict['destination_geom']}, r.geom) = MIN(ST_Distance(od.{column_dict['destination_geom']}, r.geom)) OVER (PARTITION BY od.{column_dict['destination_geom']});
+        CREATE TABLE IF NOT EXISTS destination_nearest AS
+            SELECT
+                od.{column_dict['destination_geom']} AS destination_geom,
+                r.region_name AS destination_region
+            FROM (SELECT DISTINCT {column_dict['destination_geom']} FROM {table_name}) od
+            CROSS JOIN regions_no_parks r
+        QUALIFY
+            ST_Distance(od.{column_dict['destination_geom']}, r.geom)
+            = MIN(ST_Distance(od.{column_dict['destination_geom']}, r.geom))
+            OVER (PARTITION BY od.{column_dict['destination_geom']});
     """)
 
     #EXPORT TO CSV
@@ -205,21 +211,20 @@ if not flow_path.exists():
     #ST_DWithin guarantees location matching within 0.000001 of a degree of coordinate, allows leeway by a few inches in case of rounding issues.
     flow_matrix = duck_citi_od_connect.execute(f"""
         WITH od_labeled AS (
-            SELECT COUNT(*)
+            SELECT
                 o.origin_region,
-                d.destination_region,
-                AS rides
+                d.destination_region
             FROM {table_name} od
             JOIN origin_nearest o
             ON ST_DWithin(od.{column_dict['origin_geom']}, o.origin_geom, 1e-6)
             JOIN destination_nearest d
-            ON od.{column_dict['destination_geom']} = d.destination_geom
+            ON ST_DWithin(od.{column_dict['destination_geom']}, d.destination_geom, 1e-6)
         )
 
         SELECT
             origin_region,
             destination_region,
-            rides
+            COUNT(*) AS rides
         FROM od_labeled
         GROUP BY origin_region, destination_region
         ORDER BY origin_region, destination_region;
@@ -306,8 +311,8 @@ df_long = pd.DataFrame(
 #PIVOT TO 2D
 df_matrix = df_long.pivot(index="origin", columns="destination", values="annual_rides")
 
-df_matrix = df_matrix.reindex(sorted(df_matrix.index, key=sort_key))
-df_matrix = df_matrix.reindex(sorted(df_matrix.columns, key=sort_key), axis=1)
+df_matrix = df_matrix.reindex(sorted(df_matrix.index, key=sort_key), fill_value=0)
+df_matrix = df_matrix.reindex(sorted(df_matrix.columns, key=sort_key), fill_value=0, axis=1)
 
 
 # EXPORT TO CSV
