@@ -70,7 +70,7 @@ def get_all_rows(client, dataset, duckdb_database, limit=200000):
 
     offset = 0
     while True:
-        rows = client.get(dataset, limit=limit, offset=offset, where=f"date > '{latest_timestamp}'")
+        rows = client.get(dataset, limit=limit, offset=offset, where=f"date > '{latest_timestamp}'", order="date ASC")
         if not rows:
             break
 
@@ -79,7 +79,7 @@ def get_all_rows(client, dataset, duckdb_database, limit=200000):
         temp_row_count += len(rows) #TEMP TO HELP US COUNT TOTAL ROWS, REMOVE LATER
         print(f"TEST (REMOVE LATER) - Number of Rows now: {temp_row_count}") #TEMP TO HELP US COUNT TOTAL ROWS, REMOVE LATER
 
-def update_duckdb_database(client, dataset, duckdb_database, limit=200000):
+def update_duckdb_database(client, dataset, duckdb_database, limit=1000000):
 
     for chunk in get_all_rows(client, dataset, duckdb_database):
         df_chunk = pd.DataFrame.from_records(chunk)
