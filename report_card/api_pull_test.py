@@ -9,14 +9,20 @@ from sodapy import Socrata #socrata is used to pull and organize data from NYS o
 
 #list the datasets in use for the website project and define their NYS Open Data Codes:
 open_data_dict = {
-    "mta_bridge_traffic": "ebfx-2m7v"
+    "mta_bridge_traffic": "ebfx-2m7v",
+    "mta_subway_ridership": "5wq4-mkjj"
 }
 
 #initialize DuckDB database for the report card
 duck_report_card_connect = duckdb.connect(database="report_card.duckdb") 
 
+#use spatial element
+duck_report_card_connect.execute("INSTALL spatial;")
+duck_report_card_connect.execute("LOAD spatial;")
+
 
 # create table "mta_bridge_traffic", define the columns from the dataset
+# https://dev.socrata.com/foundry/data.ny.gov/ebfx-2m7v 
 duck_report_card_connect.execute(f"""
     CREATE TABLE IF NOT EXISTS mta_bridge_traffic (
         transit_timestamp TIMESTAMP,
@@ -30,6 +36,24 @@ duck_report_card_connect.execute(f"""
         vehicle_class_description TEXT,
         vehicle_class_category TEXT,
         traffic_count INTEGER
+    )
+""")
+# create table "mta_subway_ridership", define the columns from the dataset
+# https://dev.socrata.com/foundry/data.ny.gov/5wq4-mkjj
+duck_report_card_connect.execute(f"""
+    CREATE TABLE IF NOT EXISTS mta_subway_ridership (
+    transit_timestamp TIMESTAMP,
+    transit_mode TEXT,
+    station_complex_id TEXT,
+    station_complex TEXT,
+    borough TEXT,
+    payment_method TEXT,
+    fare_class_category TEXT,
+    ridership FLOAT,
+    transfers FLOAT,
+    latitude FLOAT,
+    longitude FLOAT,
+    georeference GEOMETRY
     )
 """)
 
@@ -93,18 +117,23 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=200000):
 #run function for MTA Bridge Traffic
 update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
 
-# traffic_row_count = duck_report_card_connect.execute(f"""
-#     SELECT COUNT(*) FROM mta_bridge_traffic AS traffic_row_count
-# """).fetchone()[0]
+#run function for MTA Subway Ridership
+update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
 
-# first_thousand = duck_report_card_connect.execute(f"""
-#     SELECT * FROM mta_bridge_traffic
-#     ORDER BY date DESC, transit_timestamp DESC
-#     LIMIT 10
-#     """).fetchall()
+for metric in ["mta_bridge_traffic", "mta_subway_ridership"]:
 
-# print(traffic_row_count)
-# print(first_thousand)
+    traffic_row_count = duck_report_card_connect.execute(f"""
+        SELECT COUNT(*) FROM {metric} AS traffic_row_count
+    """).fetchone()[0]
+
+    first_thousand = duck_report_card_connect.execute(f"""
+        SELECT * FROM {metric}
+        ORDER BY date DESC, transit_timestamp DESC
+        LIMIT 10
+        """).fetchall()
+
+    print(traffic_row_count)
+    print(first_thousand)
 
 
 duck_report_card_connect.close()
