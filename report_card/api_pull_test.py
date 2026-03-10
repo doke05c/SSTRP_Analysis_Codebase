@@ -79,6 +79,19 @@ nys_client = Socrata(
     timeout=60
 )
 
+#importing georeference will be in the following format:
+    # type VARCHAR,
+    # coordinates DOUBLE[]
+# this MUST be converted to WKT point geometry to work as a GEOMETRY type.
+def convert_georeference_to_wkt(row):
+    geo_text = row.get("georeference")
+
+    if geo_text and "coordinates" in geo_text:
+        lon, lat = geo_text["coordinates"]
+        return f"POINT ({lon} {lat})"
+    else:
+        return None
+
 #function to retrieve all rows from a given dataset:
     # takes in the client credentials, desired dataset, and desired output database
     # hard limit of 200k rows per refresh, refreshes until no more data to pull
@@ -86,19 +99,24 @@ def get_all_rows(client, dataset, duckdb_database, limit=200000):
 
     #get the latest timestamp. only pull data that is newer than the latest timestamp in order to not get repeat data
     latest_timestamp = duck_report_card_connect.execute(f"""
-        SELECT MAX(date) FROM {duckdb_database}
+        SELECT MAX(transit_timestamp) FROM {duckdb_database}
     """).fetchone()[0]
 
     #if no latest timestamp, data is not in database yet, make up some date that is impossible to precede to pull oldest data first
     if latest_timestamp is None:
-        latest_timestamp = "1900-01-01"
+        latest_timestamp = "1900-01-01T00:00:00"
+    else:
+        #convert timestamp to proper timestamp format
+        latest_timestamp = latest_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
+        print(latest_timestamp)
+
 
     #set offset for purposes of keeping track of which row we are on per-pull
     offset = 0
     while True: #<- loop
         #get data only if the date is more recent than our most recent available data.
         #obtain data in chronological order: oldest -> newest
-        rows = client.get(dataset, limit=limit, offset=offset, where=f"date > '{latest_timestamp}'", order="date ASC")
+        rows = client.get(dataset, limit=limit, offset=offset, where=f"transit_timestamp > '{latest_timestamp}'", order="transit_timestamp ASC")
         if not rows:
             break #<- until nothing is left
 
@@ -112,13 +130,19 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=200000):
     #put each chunk into a pandas df -> into the duckdb database at a time
     for chunk in get_all_rows(client, dataset, duckdb_database):
         df_chunk = pd.DataFrame.from_records(chunk)
+
+        #for databases with georeferences, convert them properly to WKT geometry before adding
+        #apply axis=1 to apply along column
+        if "georeference" in df_chunk.columns:
+            df_chunk['georeference'] = df_chunk.apply(convert_georeference_to_wkt, axis=1)
+
         duck_report_card_connect.append(duckdb_database, df_chunk)
 
-#run function for MTA Bridge Traffic
-update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
+# #run function for MTA Bridge Traffic
+# update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
 
-#run function for MTA Subway Ridership
-update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
+# #run function for MTA Subway Ridership
+# update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
 
 for metric in ["mta_bridge_traffic", "mta_subway_ridership"]:
 
@@ -128,7 +152,7 @@ for metric in ["mta_bridge_traffic", "mta_subway_ridership"]:
 
     first_thousand = duck_report_card_connect.execute(f"""
         SELECT * FROM {metric}
-        ORDER BY date DESC, transit_timestamp DESC
+        ORDER BY transit_timestamp DESC
         LIMIT 10
         """).fetchall()
 
