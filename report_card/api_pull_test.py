@@ -6,6 +6,8 @@
 import duckdb #DuckDB will process the data with SQL
 import pandas as pd #pandas to work with smaller result summary tables
 from sodapy import Socrata #socrata is used to pull and organize data from NYS opendata
+import time #to sleep between requests
+import requests #to manage multiple requests via API if first attempt breaks
 
 #list the datasets in use for the website project and define their NYS Open Data Codes:
 open_data_dict = {
@@ -38,6 +40,7 @@ duck_report_card_connect.execute(f"""
         traffic_count INTEGER
     )
 """)
+
 # create table "mta_subway_ridership", define the columns from the dataset
 # https://dev.socrata.com/foundry/data.ny.gov/5wq4-mkjj
 duck_report_card_connect.execute(f"""
@@ -97,6 +100,9 @@ def convert_georeference_to_wkt(row):
     # hard limit of 200k rows per refresh, refreshes until no more data to pull
 def get_all_rows(client, dataset, duckdb_database, limit=200000):
 
+    #TEMPORARY, REMOVE LATER
+    global temp_row_count
+
     #get the latest timestamp. only pull data that is newer than the latest timestamp in order to not get repeat data
     latest_timestamp = duck_report_card_connect.execute(f"""
         SELECT MAX(transit_timestamp) FROM {duckdb_database}
@@ -110,20 +116,42 @@ def get_all_rows(client, dataset, duckdb_database, limit=200000):
         latest_timestamp = latest_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
         print(latest_timestamp)
 
-
+    
     #set offset for purposes of keeping track of which row we are on per-pull
     offset = 0
     while True: #<- loop
-        #get data only if the date is more recent than our most recent available data.
-        #obtain data in chronological order: oldest -> newest
-        rows = client.get(dataset, limit=limit, offset=offset, where=f"transit_timestamp > '{latest_timestamp}'", order="transit_timestamp ASC")
+
+        #max of 5 https API requests per run
+        max_retries = 5
+        for attempt in range(max_retries):
+
+            try:
+                #get data only if the date is more recent than our most recent available data.
+                #obtain data in chronological order: oldest -> newest
+                rows = client.get(dataset, limit=limit, offset=offset, where=f"transit_timestamp > '{latest_timestamp}'", order="transit_timestamp ASC")
+
+                break
+            
+            #catch exception for misencoding https request
+            except requests.exceptions.ChunkedEncodingError:
+                print(f"ChunkedEncodingError, retrying {attempt+1}/{max_retries}...")
+                time.sleep(2 ** attempt)
+        else: 
+            #after multiple failed attempts, finally throw the error
+            raise RuntimeError("Failed after multiple request retries")
+
+
         if not rows:
             break #<- until nothing is left
 
         yield rows #<-process data one piece at a time, easier on memory
-        
+            
         #offset updates after new rows get taken in, go back to start of the loop to process another chunk
         offset += len(rows)
+
+        #TEMPORARY, REMOVE LATER
+        temp_row_count+= len(rows)
+        print(temp_row_count)
 
 def update_duckdb_database(client, dataset, duckdb_database, limit=200000):
 
@@ -138,11 +166,14 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=200000):
 
         duck_report_card_connect.append(duckdb_database, df_chunk)
 
-# #run function for MTA Bridge Traffic
-# update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
+#run function for MTA Bridge Traffic
+update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
 
-# #run function for MTA Subway Ridership
-# update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
+#TEMPORARY, REMOVE LATER
+temp_row_count = 0
+
+#run function for MTA Subway Ridership
+update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
 
 for metric in ["mta_bridge_traffic", "mta_subway_ridership"]:
 
