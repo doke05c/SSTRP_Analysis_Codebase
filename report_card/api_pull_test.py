@@ -136,6 +136,12 @@ def get_all_rows(client, dataset, duckdb_database, limit=200000):
             except requests.exceptions.ChunkedEncodingError:
                 print(f"ChunkedEncodingError, retrying {attempt+1}/{max_retries}...")
                 time.sleep(2 ** attempt)
+            
+            #catch exception for timeouts, allow retries on timeouts
+            except requests.exceptions.ReadTimeout:
+                print(f"ReadTimeout, retrying {attempt+1}/{max_retries}...")
+                time.sleep(2 ** attempt)
+
         else: 
             #after multiple failed attempts, finally throw the error
             raise RuntimeError("Failed after multiple request retries")
@@ -169,17 +175,14 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=200000):
 #run function for MTA Bridge Traffic
 update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
 
-#TEMPORARY, REMOVE LATER
-temp_row_count = 0
-
-#run function for MTA Subway Ridership
-update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
-
 for metric in ["mta_bridge_traffic", "mta_subway_ridership"]:
 
     traffic_row_count = duck_report_card_connect.execute(f"""
         SELECT COUNT(*) FROM {metric} AS traffic_row_count
     """).fetchone()[0]
+
+    #TEMPORARY, REMOVE LATER
+    temp_row_count = traffic_row_count
 
     first_thousand = duck_report_card_connect.execute(f"""
         SELECT * FROM {metric}
@@ -189,6 +192,10 @@ for metric in ["mta_bridge_traffic", "mta_subway_ridership"]:
 
     print(traffic_row_count)
     print(first_thousand)
+
+#run function for MTA Subway Ridership
+update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
+
 
 
 duck_report_card_connect.close()
