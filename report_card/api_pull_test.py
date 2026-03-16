@@ -39,7 +39,7 @@ duck_report_card_connect.execute(f"""
         vehicle_class_description TEXT,
         vehicle_class_category TEXT,
         traffic_count INTEGER,
-        CONSTRAINT unique_row UNIQUE (transit_timestamp, facility, direction, payment_method)    
+        CONSTRAINT unique_row UNIQUE (transit_timestamp, facility, direction, payment_method, vehicle_class)    
     );
 """)
 
@@ -60,7 +60,7 @@ duck_report_card_connect.execute(f"""
         latitude FLOAT,
         longitude FLOAT,
         georeference GEOMETRY,
-        CONSTRAINT unique_row UNIQUE(transit_timestamp, station_complex_id, payment_method)
+        CONSTRAINT unique_row UNIQUE(transit_timestamp, station_complex_id, payment_method, fare_class_category)
     );
 """)
 
@@ -259,13 +259,13 @@ for metric in ["cbd_entries", "mta_bridge_traffic"]: #, "mta_subway_ridership"]:
         ORDER BY {timestamp_name} DESC
         LIMIT 10
         """).fetchall()
+    
+    print(traffic_row_count)
+    print(first_thousand)
+
 
 
 #run function for MTA Subway Ridership
 # update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
-
-
-print(traffic_row_count)
-print(first_thousand)
 
 duck_report_card_connect.close()
