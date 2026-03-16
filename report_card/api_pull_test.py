@@ -23,7 +23,6 @@ duck_report_card_connect = duckdb.connect(database="report_card.duckdb")
 duck_report_card_connect.execute("INSTALL spatial;")
 duck_report_card_connect.execute("LOAD spatial;")
 
-
 # create table "mta_bridge_traffic", define the columns from the dataset
 # enforce uniqueness in table
 # https://dev.socrata.com/foundry/data.ny.gov/ebfx-2m7v 
@@ -40,7 +39,7 @@ duck_report_card_connect.execute(f"""
         vehicle_class_description TEXT,
         vehicle_class_category TEXT,
         traffic_count INTEGER,
-        CONSTRAINT unique_row UNIQUE (transit_timestamp, facility, direction, payment_method, traffic_count)    
+        CONSTRAINT unique_row UNIQUE (transit_timestamp, facility, direction, payment_method)    
     );
 """)
 
@@ -61,7 +60,7 @@ duck_report_card_connect.execute(f"""
         latitude FLOAT,
         longitude FLOAT,
         georeference GEOMETRY,
-        CONSTRAINT unique_row UNIQUE(transit_timestamp, station_complex_id, payment_method, ridership)
+        CONSTRAINT unique_row UNIQUE(transit_timestamp, station_complex_id, payment_method)
     );
 """)
 
@@ -84,7 +83,7 @@ duck_report_card_connect.execute(f"""
         detection_region TEXT,
         crz_entries FLOAT,
         excluded_roadway_entries FLOAT,
-        CONSTRAINT unique_row UNIQUE(toll_10_minute_block, vehicle_class, detection_region, crz_entries)
+        CONSTRAINT unique_row UNIQUE(toll_10_minute_block, vehicle_class, detection_group, detection_region)
     );
 """)
 
@@ -111,7 +110,7 @@ nys_client = Socrata(
 )
 
 #declare size for how big of an api request to make at one time
-api_pull_size = 1000000
+api_pull_size = 200000
 
 
 #TEMPORARY, REMOVE LATER
@@ -235,26 +234,35 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size
 #run function for CBD Entries
 update_duckdb_database(nys_client, open_data_dict["cbd_entries"], "cbd_entries")
 
-for metric in ["cbd_entries", "mta_bridge_traffic", "mta_subway_ridership"]:
+#run function for MTA Bridge Traffic
+update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
+
+
+for metric in ["cbd_entries", "mta_bridge_traffic"]: #, "mta_subway_ridership"]:
 
     traffic_row_count = duck_report_card_connect.execute(f"""
         SELECT COUNT(*) FROM {metric} AS traffic_row_count
     """).fetchone()[0]
 
+
+    #name the timestamp method we are using.
+    if (metric == "mta_bridge_traffic" or metric == "mta_subway_ridership"):
+
+        timestamp_name = "transit_timestamp"
+
+    elif (metric == "cbd_entries"):
+        
+        timestamp_name = "toll_10_minute_block"
+
     first_thousand = duck_report_card_connect.execute(f"""
         SELECT * FROM {metric}
-        ORDER BY transit_timestamp DESC
+        ORDER BY {timestamp_name} DESC
         LIMIT 10
         """).fetchall()
 
 
-#run function for MTA Bridge Traffic
-update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
-
-
-
 #run function for MTA Subway Ridership
-update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
+# update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
 
 
 print(traffic_row_count)
