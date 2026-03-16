@@ -24,6 +24,7 @@ duck_report_card_connect.execute("LOAD spatial;")
 
 
 # create table "mta_bridge_traffic", define the columns from the dataset
+# enforce uniqueness in table
 # https://dev.socrata.com/foundry/data.ny.gov/ebfx-2m7v 
 duck_report_card_connect.execute(f"""
     CREATE TABLE IF NOT EXISTS mta_bridge_traffic (
@@ -37,27 +38,30 @@ duck_report_card_connect.execute(f"""
         vehicle_class INTEGER,
         vehicle_class_description TEXT,
         vehicle_class_category TEXT,
-        traffic_count INTEGER
-    )
+        traffic_count INTEGER,
+        CONSTRAINT unique_row UNIQUE (transit_timestamp, facility, direction, payment_method, traffic_count)    
+    );
 """)
 
 # create table "mta_subway_ridership", define the columns from the dataset
+# enforce uniqueness in table
 # https://dev.socrata.com/foundry/data.ny.gov/5wq4-mkjj
 duck_report_card_connect.execute(f"""
     CREATE TABLE IF NOT EXISTS mta_subway_ridership (
-    transit_timestamp TIMESTAMP,
-    transit_mode TEXT,
-    station_complex_id TEXT,
-    station_complex TEXT,
-    borough TEXT,
-    payment_method TEXT,
-    fare_class_category TEXT,
-    ridership FLOAT,
-    transfers FLOAT,
-    latitude FLOAT,
-    longitude FLOAT,
-    georeference GEOMETRY
-    )
+        transit_timestamp TIMESTAMP,
+        transit_mode TEXT,
+        station_complex_id TEXT,
+        station_complex TEXT,
+        borough TEXT,
+        payment_method TEXT,
+        fare_class_category TEXT,
+        ridership FLOAT,
+        transfers FLOAT,
+        latitude FLOAT,
+        longitude FLOAT,
+        georeference GEOMETRY,
+        CONSTRAINT unique_row UNIQUE(transit_timestamp, station_complex_id, payment_method, ridership)
+    );
 """)
 
 # Unauthenticated client only works with public data sets. Note 'None' <- DEPRECATED UNAUTHENTICATED API CLIENT, DO NOT USE
@@ -82,6 +86,10 @@ nys_client = Socrata(
     timeout=60
 )
 
+#declare size for how big of an api request to make at one time
+api_pull_size = 1000000
+
+
 #TEMPORARY, REMOVE LATER
 temp_row_count = 0
 
@@ -102,25 +110,26 @@ def convert_georeference_to_wkt(row):
 #function to retrieve all rows from a given dataset:
     # takes in the client credentials, desired dataset, and desired output database
     # hard limit of 200k rows per refresh, refreshes until no more data to pull
-def get_all_rows(client, dataset, duckdb_database, limit=200000):
+def get_all_rows(client, dataset, duckdb_database, limit=api_pull_size):
 
     #TEMPORARY, REMOVE LATER
     global temp_row_count
 
+    #get the latest timestamp. only pull data that is newer than the latest timestamp in order to not get repeat data
+    latest_timestamp = duck_report_card_connect.execute(f"""
+        SELECT MAX(transit_timestamp) FROM {duckdb_database}
+    """).fetchone()[0]
     
-    #set offset for purposes of keeping track of which row we are on per-pull
-    offset = 0
-    while True: #<- loop
+    #initialize empty row dataset for now before first pull
+    rows = None
 
-        #get the latest timestamp. only pull data that is newer than the latest timestamp in order to not get repeat data
-        latest_timestamp = duck_report_card_connect.execute(f"""
-            SELECT MAX(transit_timestamp) FROM {duckdb_database}
-        """).fetchone()[0]
+    #if the previous pull was full size, or if there hasn't been a pull yet, loop through pulls
+    while ((not rows) or (len(rows) == api_pull_size)): #<- loop
 
         #if no latest timestamp, data is not in database yet, make up some date that is impossible to precede to pull oldest data first
         if latest_timestamp is None:
             latest_timestamp = "1900-01-01T00:00:00"
-        else:
+        elif hasattr(latest_timestamp, "strftime"):
             #convert timestamp to proper timestamp format
             latest_timestamp = latest_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
         
@@ -133,7 +142,7 @@ def get_all_rows(client, dataset, duckdb_database, limit=200000):
             try:
                 #get data only if the date is more recent than our most recent available data.
                 #obtain data in chronological order: oldest -> newest
-                rows = client.get(dataset, limit=limit, offset=offset, where=f"transit_timestamp >= '{latest_timestamp}'", order="transit_timestamp ASC")
+                rows = client.get(dataset, limit=limit, where=f"transit_timestamp >= '{latest_timestamp}'", order="transit_timestamp ASC")
 
                 break
             
@@ -155,54 +164,59 @@ def get_all_rows(client, dataset, duckdb_database, limit=200000):
         if not rows:
             break #<- until nothing is left
 
-        yield rows #<-process data one piece at a time, easier on memory
-            
-        #offset updates after new rows get taken in, go back to start of the loop to process another chunk
-        offset += len(rows)
-
-        #TEMPORARY, REMOVE LATER
-        temp_row_count+= len(rows)
-        print(temp_row_count)
-
-def update_duckdb_database(client, dataset, duckdb_database, limit=200000):
-
-    #put each chunk into a pandas df -> into the duckdb database at a time
-    for chunk in get_all_rows(client, dataset, duckdb_database):
-        df_chunk = pd.DataFrame.from_records(chunk)
+        #put each chunk into a pandas df
+        df_rows = pd.DataFrame.from_records(rows)
 
         #for databases with georeferences, convert them properly to WKT geometry before adding
-        #apply axis=1 to apply along column
-        if "georeference" in df_chunk.columns:
-            df_chunk['georeference'] = df_chunk.apply(convert_georeference_to_wkt, axis=1)
-        
-        # Load existing table into a view
-        duck_report_card_connect.execute(f"CREATE OR REPLACE VIEW existing_view AS SELECT * FROM {duckdb_database}")
+        if "georeference" in df_rows.columns:
+            df_rows["georeference"] = df_rows["georeference"].map(convert_georeference_to_wkt)
 
-        # Get columns dynamically
+        #get columns dynamically
         table_columns = [row[0] for row in duck_report_card_connect.execute(f"DESCRIBE {duckdb_database}").fetchall()]
 
-        # Ensure df_chunk has the same columns and order
-        df_chunk = df_chunk.reindex(columns=table_columns)
+        #ensure df_rows has the same columns and order
+        df_rows = df_rows.reindex(columns=table_columns)
 
-        # Create a view for the chunk
-        duck_report_card_connect.register("df_chunk_view", df_chunk)
+        #update latest_timestamp using rows because we won't get to see those new rows in our duckdb database for a while-- we have yielded them            
+        duck_report_card_connect.register("df_rows_view", df_rows)
 
-        # Insert only rows that don't exist in the database
-        cols_join = " AND ".join([f"df_chunk_view.{col} = existing_view.{col}" for col in table_columns])
+        latest_timestamp = duck_report_card_connect.execute(f"""
+            SELECT MAX(transit_timestamp) FROM df_rows_view
+        """).fetchone()[0]
 
+        #TEMPORARY, REMOVE LATER
+        temp_row_count += len(rows)
+        print(temp_row_count)
+
+        yield "df_rows_view" #<-process data one piece at a time, easier on memory
+
+def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size):
+
+    #put each chunk into the duckdb database at a time
+    for row_view_name in get_all_rows(client, dataset, duckdb_database):
+        
         duck_report_card_connect.execute(f"""
-        INSERT INTO {duckdb_database}
-        SELECT *
-        FROM df_chunk_view
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM existing_view
-            WHERE {cols_join}
-        )
+            INSERT INTO {duckdb_database}
+            SELECT *
+            FROM {row_view_name}
+            ON CONFLICT DO NOTHING
         """)
 
 #run function for MTA Bridge Traffic
 update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
+
+for metric in ["mta_bridge_traffic", "mta_subway_ridership"]:
+
+    traffic_row_count = duck_report_card_connect.execute(f"""
+        SELECT COUNT(*) FROM {metric} AS traffic_row_count
+    """).fetchone()[0]
+
+    first_thousand = duck_report_card_connect.execute(f"""
+        SELECT * FROM {metric}
+        ORDER BY transit_timestamp DESC
+        LIMIT 10
+        """).fetchall()
+
 
 #run function for MTA Subway Ridership
 update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
