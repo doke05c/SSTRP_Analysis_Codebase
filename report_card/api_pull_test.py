@@ -13,7 +13,8 @@ import requests #to manage multiple requests via API if first attempt breaks
 open_data_dict = {
     "mta_bridge_traffic": "ebfx-2m7v",
     "mta_subway_ridership": "5wq4-mkjj",
-    "cbd_entries": "t6yz-b64h"
+    "cbd_entries": "t6yz-b64h",
+    "mta_overall_ridership_traffic": "sayj-mze2"
 }
 
 #initialize DuckDB database for the report card
@@ -87,6 +88,18 @@ duck_report_card_connect.execute(f"""
     );
 """)
 
+# create table "mta_overall_ridership_traffic", define the columns from the dataset
+# enforce uniqueness in table
+# https://dev.socrata.com/foundry/data.ny.gov/sayj-mze2
+duck_report_card_connect.execute(f"""
+    CREATE TABLE IF NOT EXISTS mta_overall_ridership_traffic (
+        date TIMESTAMP,
+        mode TEXT,
+        count FLOAT,
+        CONSTRAINT unique_row UNIQUE(date, mode)
+    );
+""")
+
 # Unauthenticated client only works with public data sets. Note 'None' <- DEPRECATED UNAUTHENTICATED API CLIENT, DO NOT USE
 # in place of application token, and no username or password:
 # client = Socrata("data.ny.gov", None, timeout=60)
@@ -116,6 +129,15 @@ api_pull_size = 200000
 #TEMPORARY, REMOVE LATER
 temp_row_count = 0
 
+#function for the timestamp name used for each nys opendata dataset
+def get_timestamp_name(duckdb_database):
+    return ({
+        "mta_bridge_traffic" : "transit_timestamp",
+        "mta_subway_ridership" : "transit_timestamp",
+        "cbd_entries" : "toll_10_minute_block",
+        "mta_overall_ridership_traffic" : "date"
+    }.get(duckdb_database)
+    or "none_found")
 
 #importing georeference will be in the following format:
     # type VARCHAR,
@@ -140,17 +162,8 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size
 
     #get the latest timestamp. only pull data that is newer than the latest timestamp in order to not get repeat data
 
-    if (duckdb_database == "mta_bridge_traffic" or duckdb_database == "mta_subway_ridership"):
-
-        timestamp_name = "transit_timestamp"
-
-    elif (duckdb_database == "cbd_entries"):
-        
-        timestamp_name = "toll_10_minute_block"
-
-
     latest_timestamp = duck_report_card_connect.execute(f"""
-        SELECT MAX({timestamp_name}) FROM {duckdb_database}
+        SELECT MAX({get_timestamp_name(duckdb_database)}) FROM {duckdb_database}
     """).fetchone()[0]
 
     
@@ -176,7 +189,7 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size
             try:
                 #get data only if the date is more recent than our most recent available data.
                 #obtain data in chronological order: oldest -> newest
-                rows = client.get(dataset, limit=limit, where=f"{timestamp_name} >= '{latest_timestamp}'", order=f"{timestamp_name} ASC")
+                rows = client.get(dataset, limit=limit, where=f"{get_timestamp_name(duckdb_database)} >= '{latest_timestamp}'", order=f"{get_timestamp_name(duckdb_database)} ASC")
 
                 break
             
@@ -215,7 +228,7 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size
         duck_report_card_connect.register("df_rows_view", df_rows)
 
         latest_timestamp = duck_report_card_connect.execute(f"""
-            SELECT MAX({timestamp_name}) FROM df_rows_view
+            SELECT MAX({get_timestamp_name(duckdb_database)}) FROM df_rows_view
         """).fetchone()[0]
 
         #TEMPORARY, REMOVE LATER
@@ -237,27 +250,23 @@ update_duckdb_database(nys_client, open_data_dict["cbd_entries"], "cbd_entries")
 #run function for MTA Bridge Traffic
 update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_bridge_traffic")
 
+#run function for MTA Overall Ridership/Traffic
+update_duckdb_database(nys_client, open_data_dict["mta_overall_ridership_traffic"], "mta_overall_ridership_traffic")
 
-for metric in ["cbd_entries", "mta_bridge_traffic"]: #, "mta_subway_ridership"]:
+# run function for MTA Subway Ridership
+update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
+
+
+for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership"]:
 
     traffic_row_count = duck_report_card_connect.execute(f"""
         SELECT COUNT(*) FROM {metric} AS traffic_row_count
     """).fetchone()[0]
 
-
-    #name the timestamp method we are using.
-    if (metric == "mta_bridge_traffic" or metric == "mta_subway_ridership"):
-
-        timestamp_name = "transit_timestamp"
-
-    elif (metric == "cbd_entries"):
-        
-        timestamp_name = "toll_10_minute_block"
-
     first_thousand = duck_report_card_connect.execute(f"""
         SELECT * FROM {metric}
-        ORDER BY {timestamp_name} DESC
-        LIMIT 10
+        ORDER BY {get_timestamp_name(metric)} DESC
+        LIMIT 3
         """).fetchall()
     
     print(traffic_row_count)
@@ -265,7 +274,5 @@ for metric in ["cbd_entries", "mta_bridge_traffic"]: #, "mta_subway_ridership"]:
 
 
 
-#run function for MTA Subway Ridership
-# update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
 
 duck_report_card_connect.close()
