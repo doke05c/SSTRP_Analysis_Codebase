@@ -254,8 +254,8 @@ update_duckdb_database(nys_client, open_data_dict["mta_bridge_traffic"], "mta_br
 update_duckdb_database(nys_client, open_data_dict["mta_overall_ridership_traffic"], "mta_overall_ridership_traffic")
 
 # run function for MTA Subway Ridership
-update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
-
+# update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
+# ^^Too big, drop for now
 
 for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership"]:
 
