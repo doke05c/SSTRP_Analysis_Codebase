@@ -18,7 +18,7 @@ open_data_dict = {
 }
 
 #initialize DuckDB database for the report card
-duck_report_card_connect = duckdb.connect(database="report_card.duckdb") 
+duck_report_card_connect = duckdb.connect(database="/home/doke30/urban blogs/UrbanBlogs/src/report_card.duckdb") 
 
 #use spatial element
 duck_report_card_connect.execute("INSTALL spatial;")
@@ -61,7 +61,7 @@ duck_report_card_connect.execute(f"""
         latitude FLOAT,
         longitude FLOAT,
         georeference GEOMETRY,
-        CONSTRAINT unique_row UNIQUE(transit_timestamp, station_complex_id, payment_method, fare_class_category)
+        CONSTRAINT unique_row UNIQUE(transit_timestamp, station_complex_id, transit_mode, payment_method, fare_class_category)
     );
 """)
 
@@ -126,8 +126,8 @@ nys_client = Socrata(
 api_pull_size = 200000
 
 
-#TEMPORARY, REMOVE LATER
-temp_row_count = 0
+# #TEMPORARY, REMOVE LATER
+# temp_row_count = 0
 
 #function for the timestamp name used for each nys opendata dataset
 def get_timestamp_name(duckdb_database):
@@ -157,8 +157,8 @@ def convert_georeference_to_wkt(row):
     # hard limit of 200k rows per refresh, refreshes until no more data to pull
 def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size):
 
-    #TEMPORARY, REMOVE LATER
-    global temp_row_count
+    # #TEMPORARY, REMOVE LATER
+    # global temp_row_count
 
     #get the latest timestamp. only pull data that is newer than the latest timestamp in order to not get repeat data
 
@@ -180,7 +180,7 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size
             #convert timestamp to proper timestamp format
             latest_timestamp = latest_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
         
-        print(latest_timestamp)
+        # print(latest_timestamp)
 
         #max of 5 https API requests per run
         max_retries = 5
@@ -231,9 +231,9 @@ def update_duckdb_database(client, dataset, duckdb_database, limit=api_pull_size
             SELECT MAX({get_timestamp_name(duckdb_database)}) FROM df_rows_view
         """).fetchone()[0]
 
-        #TEMPORARY, REMOVE LATER
-        temp_row_count += len(rows)
-        print(temp_row_count)
+        # #TEMPORARY, REMOVE LATER
+        # temp_row_count += len(rows)
+        # print(temp_row_count)
 
         duck_report_card_connect.execute(f"""
             INSERT INTO {duckdb_database}
