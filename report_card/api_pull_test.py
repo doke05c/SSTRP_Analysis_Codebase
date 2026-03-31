@@ -257,7 +257,10 @@ update_duckdb_database(nys_client, open_data_dict["mta_overall_ridership_traffic
 # update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
 # ^^Too big, drop for now
 
+
 for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership"]:
+
+    output_path = f"/home/doke30/urban blogs/UrbanBlogs/src/{metric}.parquet"
 
     traffic_row_count = duck_report_card_connect.execute(f"""
         SELECT COUNT(*) FROM {metric} AS traffic_row_count
@@ -269,6 +272,13 @@ for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traff
         LIMIT 3
         """).fetchall()
     
+    #copy to parquet, much faster reads in web load
+    duck_report_card_connect.execute(f"""
+    COPY {metric}
+    TO '{output_path}'
+    (FORMAT PARQUET, OVERWRITE TRUE);
+    """)
+
     print(traffic_row_count)
     print(first_thousand)
 
