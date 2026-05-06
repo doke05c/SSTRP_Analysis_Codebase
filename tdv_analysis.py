@@ -12,7 +12,7 @@ DATE_DECISION = DATE_STYLE[1] #deciaion index
 month_list = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
 
 #TEMPLATE TO FILL IN VARIABLE NAMES BY YEAR
-list_of_years = ["2024", "2025"] #EDIT HERE TO UPDATE THE LIST OF YEARS TO CHECK
+list_of_years = ["2024", "2025", "2026"] #EDIT HERE TO UPDATE THE LIST OF YEARS TO CHECK
 list_of_source_files = {} #source file dictionary, keeps track of source files through the years
 list_of_dfs = {} #df dictionary, keeps track of dfs through the months and years
 list_of_grouped_hourly_dfs = {} #same as above, but grouped by hour
@@ -36,7 +36,9 @@ nyc_holidays = [
 "2024-01-01","2024-01-15","2024-02-12","2024-02-19","2024-05-27","2024-06-19","2024-07-04",
 "2024-09-02","2024-10-14","2024-11-05","2024-11-11","2024-11-28","2024-12-25",
 "2025-01-01","2025-01-20","2025-02-12","2025-02-17","2025-05-26","2025-06-19","2025-07-04",
-"2025-09-01","2025-10-13","2025-11-04","2025-11-11","2025-11-27","2025-12-25"
+"2025-09-01","2025-10-13","2025-11-04","2025-11-11","2025-11-27","2025-12-25",
+"2026-01-01","2026-01-19","2026-02-12","2026-02-16","2026-05-25","2026-06-19","2026-07-03",
+"2026-09-07","2026-10-12","2026-11-03","2026-11-11","2026-11-26","2025-12-25",
 ]
 
 #convert to datetime element
@@ -120,7 +122,7 @@ for year in list_of_years: #iterate through the years, FILE HANDLING/REMOVING JU
 #continue modifying the structure/format of the monthly data, it will be nice and clean at the end
 for year in list_of_years:
     for month in month_list:
-        if not (year == "2025" and month in ["12"]): #only attempt clean for months that exist
+        if ((not (year == "2026" and month in ["05", "06", "07", "08", "09", "10", "11", "12"]))): #only attempt clean for months that exist
 
             #only apply if columns are a MultiIndex
             if isinstance(list_of_dfs[f"{month}/{year}"].columns, pd.MultiIndex):
@@ -180,9 +182,15 @@ monthly_avg_side_by_side_YOY_df = monthly_avg_df.pivot(
 
 monthly_avg_side_by_side_YOY_df = monthly_avg_side_by_side_YOY_df.reset_index()
 
-monthly_avg_side_by_side_YOY_df['YOY %'] = (
+monthly_avg_side_by_side_YOY_df['YOY 2024-2025 %'] = (
     (monthly_avg_side_by_side_YOY_df[2025] - monthly_avg_side_by_side_YOY_df[2024])
     / monthly_avg_side_by_side_YOY_df[2024].replace(0, pd.NA) # handles NA issues (unfinished months)
+    * 100
+).round(2)
+
+monthly_avg_side_by_side_YOY_df['YOY 2025-2026 %'] = (
+    (monthly_avg_side_by_side_YOY_df[2026] - monthly_avg_side_by_side_YOY_df[2025])
+    / monthly_avg_side_by_side_YOY_df[2025].replace(0, pd.NA) # handles NA issues (unfinished months)
     * 100
 ).round(2)
 
@@ -204,18 +212,24 @@ hourly_valid_side_by_side_YOY_df = hourly_valid_df.pivot(
 
 hourly_valid_side_by_side_YOY_df = hourly_valid_side_by_side_YOY_df.reset_index()
 
-hourly_valid_side_by_side_YOY_df['YOY %'] = (
+hourly_valid_side_by_side_YOY_df['YOY 2024-2025 %'] = (
     (hourly_valid_side_by_side_YOY_df[2025] - hourly_valid_side_by_side_YOY_df[2024])
     / hourly_valid_side_by_side_YOY_df[2024].replace(0, pd.NA) # handles NA issues (unfinished months)
     * 100
 ).round(2)
 
-# print(daily_valid_df)
-# print(hourly_valid_side_by_side_YOY_df)
-# print(monthly_avg_side_by_side_YOY_df)
+hourly_valid_side_by_side_YOY_df['YOY 2025-2026 %'] = (
+    (hourly_valid_side_by_side_YOY_df[2026] - hourly_valid_side_by_side_YOY_df[2025])
+    / hourly_valid_side_by_side_YOY_df[2025].replace(0, pd.NA) # handles NA issues (unfinished months)
+    * 100
+).round(2)
 
-# daily_valid_df.to_excel("cbe_2024_2025_agg_daily.xlsx", index=False)  
-# hourly_valid_side_by_side_YOY_df.to_excel("cbe_2024_2025_agg_hourly.xlsx", index=False)  
-# monthly_avg_side_by_side_YOY_df.to_excel("cbe_2024_2025_agg_monthly.xlsx", index=False)  
+print(daily_valid_df)
+print(hourly_valid_side_by_side_YOY_df)
+print(monthly_avg_side_by_side_YOY_df)
+
+daily_valid_df.to_excel("cbe_2024_2025_2026_agg_daily.xlsx", index=False)  
+hourly_valid_side_by_side_YOY_df.to_excel("cbe_2024_2025_2026_agg_hourly.xlsx", index=False)  
+monthly_avg_side_by_side_YOY_df.to_excel("cbe_2024_2025_2026_agg_monthly.xlsx", index=False)  
 
 
