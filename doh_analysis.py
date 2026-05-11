@@ -3,6 +3,11 @@ from pathlib import Path # we use Path to establish a location for the folder wh
 from matplotlib import pyplot as plt #plotting library to graph info visually
 from enum import Enum #make enumerated keywords (words with numerical values)
 
+#BE SURE TO PIP INSTALL:
+    #NUMPY
+    #MATPLOTLIB
+    #OPENPYXL
+
 class AQI(Enum):
     VALID_DATA_CUTOFF = 0.6  #defined as the minimum proportion of data retained for the month to be considered "lossless" 
 
@@ -104,7 +109,7 @@ site_id_list_df = pd.DataFrame(site_id_list, columns=["Site ID", "ID Name"]) #co
 
 
 #TEMPLATE TO FILL IN VARIABLE NAMES BY YEAR
-list_of_years = ["2022", "2023", "2024", "2025"] #EDIT HERE TO UPDATE THE LIST OF YEARS TO CHECK
+list_of_years = ["2023", "2024", "2025", "2026"] #EDIT HERE TO UPDATE THE LIST OF YEARS TO CHECK
 list_of_source_files = {} #source file dictionary, keeps track of source files through the years
 list_of_dfs = {} #df dictionary, keeps track of dfs through the years
 list_of_grouped_hourly_dfs = {} #same as above, but grouped by hour
@@ -198,7 +203,7 @@ valid_check_df = pd.DataFrame(missing_check_summary_data)
 pivot_valid_check_df = valid_check_df.pivot_table(index="YearMonth", columns="Site", values="ValidPct", fill_value=0)
 
 #export to excel
-# pivot_valid_check_df.to_excel("monthly_validity_summary_all_years.xlsx")
+# pivot_valid_check_df.to_excel("monthly_validity_summary_all_years_2026.xlsx")
 
 if (SITE_DECISION == "LIST"):
 
@@ -252,16 +257,16 @@ if (SITE_DECISION == "LIST"):
     if (DECISION == "HOURLY"):
         plt.xlabel('Observation Time (24H)') # label X axis
         plt.xticks(range(0, 24, 6))  # ticks from 0 to 23 every 6
-        plt.title(f'Hourly PM2.5 Concentration in {site_to_plot} (24H), 2024 vs. 2025')
+        plt.title(f'Hourly PM2.5 Concentration in {site_to_plot} (24H), 2023 through 2026')
 
     if (DECISION == "MONTHLY"):
         plt.xlabel('Month of Observation') # label X axis
         plt.xticks(range(1, 13), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])  # ticks every month
-        plt.title(f'Monthly PM2.5 Concentration in {site_to_plot}, 2024 vs. 2025')
+        plt.title(f'Monthly PM2.5 Concentration in {site_to_plot}, 2023 through 2026')
 
     plt.ylabel('PM2.5 Concentration, µg/m3') # label Y axis
     plt.legend() # show legend
-    plt.ylim(top=15)  # adjust the top leaving bottom unchanged
+    plt.ylim(top=35)  # adjust the top leaving bottom unchanged
     plt.ylim(bottom=2.6666)  # adjust the bottom leaving top unchanged
 
     #GRID
@@ -274,11 +279,15 @@ if (SITE_DECISION == "LIST"):
 
 elif (SITE_DECISION == "ITERATE"): 
 
-    for location in site_id_list: #plot all the locations in the dataset
+    # for location in site_id_list: #plot/export all the locations in the dataset
 
-        site_to_plot = location[1]
+        # site_to_plot = location[1] #plot/export all the locations in the dataset
 
     # for site_to_plot in ['broadway_and_35th', 'ccny', 'fdr', 'manhattan_bridge', 'midtown_west', 'queensboro_bridge', 'wheights_hamilton_bridge', 'wheights_washington_bridge', 'williamsburg_bridge']: 
+    # for site_to_plot in ["wheights_washington_bridge", "ccny"]:
+    # for site_to_plot in ["broadway_and_35th", "manhattan_bridge", "queensboro_bridge", "williamsburg_bridge", "fdr"]:
+    for site_to_plot in ["cross_bronx_expwy", "highbridge-mteden", "mott_haven", "longwood", "hunts_point_lower"]:
+    #ONLY PLOT/EXPORT THE LOCATIONS IN ABOVE LIST ^^
 
         for year in list_of_years: #iterate through the years, now we are plotting the data
 
@@ -319,16 +328,16 @@ elif (SITE_DECISION == "ITERATE"):
         if (DECISION == "HOURLY"):
             plt.xlabel('Observation Time (24H)') # label X axis
             plt.xticks(range(0, 24, 6))  # ticks from 0 to 23 every 6
-            plt.title(f'Hourly PM2.5 Concentration in {site_to_plot} (24H), 2022 through 2025')
+            plt.title(f'Hourly PM2.5 Concentration in {site_to_plot} (24H), 2023 through 2026')
 
         if (DECISION == "MONTHLY"):
             plt.xlabel('Month of Observation') # label X axis
             plt.xticks(range(1, 13), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])  # ticks every month
-            plt.title(f'Monthly PM2.5 Concentration in {site_to_plot}, 2022 through 2025')
+            plt.title(f'Monthly PM2.5 Concentration in {site_to_plot}, 2023 through 2026')
 
         plt.ylabel('PM2.5 Concentration, µg/m3') # label Y axis
         plt.legend() # show legend
-        # plt.ylim(top=50)  # adjust the top leaving bottom unchanged, default = 15
+        plt.ylim(top=35)  # adjust the top leaving bottom unchanged, default = 15
         plt.ylim(bottom=2.6666)  # adjust the bottom leaving top unchanged
 
         #GRID
@@ -360,4 +369,4 @@ summary_data_df_all_years.columns = summary_data_df_all_years.columns.strftime("
 # print(summary_data_df_all_years)
 
 #export to excel
-summary_data_df_all_years.to_excel("doh_monthly_summary_data_2022-2025.xlsx")
+# summary_data_df_all_years.to_excel("doh_monthly_summary_data_2022-2026.xlsx")
