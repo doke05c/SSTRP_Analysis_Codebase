@@ -472,7 +472,7 @@ for i, sev in enumerate(list_of_severities):
         #calculate YOY percentage change based on yearly data
 
         #combine into yearly, exclude months as needed
-        data_right_months = data_sev[data_sev["CRASH_MONTH"].between(1, 11)]
+        data_right_months = data_sev[data_sev["CRASH_MONTH"].between(1, 12)]
 
         data_yearly = (
             data_right_months
@@ -488,7 +488,7 @@ for i, sev in enumerate(list_of_severities):
         pivot_sev_export = pivot_sev_export.reindex(totals) #reorder rows to fit original order of totals indicated earlier
         pivot_sev_export = pivot_sev_export.reset_index() #reset index to show area names upon export
 
-        #EXPORT YEARLIES TO CSV (JAN-NOV)
+        #EXPORT YEARLIES TO CSV (JAN-DEC)
         pivot_sev_export.to_csv(f"crashes_{sev}_yoy_summary_2019_2025.csv", index=False)
 
         #make yoy_sev out of new yearly data
@@ -528,5 +528,21 @@ for i, sev in enumerate(list_of_severities):
 plt.xlabel("Year")
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.show()
 
+# plt.show()
+
+#get unique crashes (crashes with 2 deaths only count as one "K")
+unique_crashes = pd.DataFrame(
+    index=["2019", "2020", "2021", "2022", "2023", "2024", "2025"],
+    columns=["K", "A", "B", "C"]
+)
+
+for year in unique_crashes.index:
+    for severity in unique_crashes.columns:
+        unique_crashes.loc[year, severity] = spatial_crash_points_gdf.loc[
+            (spatial_crash_points_gdf["SEVERITY"] == severity) &
+            (spatial_crash_points_gdf["CRASH_DATE"].str.contains(year)),
+            "COLLISION_ID"
+        ].nunique()
+
+unique_crashes.to_csv("unique_crashes_summary.csv", index=True)
