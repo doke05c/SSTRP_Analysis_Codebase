@@ -14,7 +14,8 @@ open_data_dict = {
     "mta_bridge_traffic": "ebfx-2m7v",
     "mta_subway_ridership": "5wq4-mkjj",
     "cbd_entries": "t6yz-b64h",
-    "mta_overall_ridership_traffic": "sayj-mze2"
+    "mta_overall_ridership_traffic": "sayj-mze2",
+    "mta_subway_otp": "f6rf-2a3t"
 }
 
 #initialize DuckDB database for the report card
@@ -100,6 +101,22 @@ duck_report_card_connect.execute(f"""
     );
 """)
 
+# create table "mta_overall_ridership_traffic", define the columns from the dataset
+# enforce uniqueness in table
+# https://dev.socrata.com/foundry/data.ny.gov/f6rf-2a3t
+duck_report_card_connect.execute(f"""
+    CREATE TABLE IF NOT EXISTS mta_subway_otp (
+        month TIMESTAMP,
+        division TEXT,
+        line TEXT,
+        day_type FLOAT,
+        num_on_time_trips FLOAT,
+        num_sched_trips FLOAT,
+        terminal_on_time_performance FLOAT,
+        CONSTRAINT unique_row UNIQUE(month, division, line, day_type)    
+    );
+""")
+
 # Unauthenticated client only works with public data sets. Note 'None' <- DEPRECATED UNAUTHENTICATED API CLIENT, DO NOT USE
 # in place of application token, and no username or password:
 # client = Socrata("data.ny.gov", None, timeout=60)
@@ -135,7 +152,9 @@ def get_timestamp_name(duckdb_database):
         "mta_bridge_traffic" : "transit_timestamp",
         "mta_subway_ridership" : "transit_timestamp",
         "cbd_entries" : "toll_10_minute_block",
-        "mta_overall_ridership_traffic" : "date"
+        "mta_overall_ridership_traffic" : "date",
+        "mta_subway_otp" : "month"
+
     }.get(duckdb_database)
     or "none_found")
 
@@ -257,8 +276,12 @@ update_duckdb_database(nys_client, open_data_dict["mta_overall_ridership_traffic
 # update_duckdb_database(nys_client, open_data_dict["mta_subway_ridership"], "mta_subway_ridership")
 # ^^Too big, drop for now
 
+#run function for MTA Subway On-Time Performance
+update_duckdb_database(nys_client, open_data_dict["mta_subway_otp"], "mta_subway_otp")
 
-for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership"]:
+
+
+for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership", "mta_subway_otp"]:
 
     output_path = f"/home/doke30/urban blogs/UrbanBlogs/src/{metric}.parquet"
 
