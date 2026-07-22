@@ -15,7 +15,9 @@ open_data_dict = {
     "mta_subway_ridership": "5wq4-mkjj",
     "cbd_entries": "t6yz-b64h",
     "mta_overall_ridership_traffic": "sayj-mze2",
-    "mta_subway_otp": "f6rf-2a3t"
+    "mta_subway_otp": "f6rf-2a3t",
+    "mta_overall_ridership_traffic_old": "xfre-bxip",
+    "mta_bus_speeds": "cudb-vcni"
 }
 
 #initialize DuckDB database for the report card
@@ -101,7 +103,7 @@ duck_report_card_connect.execute(f"""
     );
 """)
 
-# create table "mta_overall_ridership_traffic", define the columns from the dataset
+# create table "mta_subway_otp", define the columns from the dataset
 # enforce uniqueness in table
 # https://dev.socrata.com/foundry/data.ny.gov/f6rf-2a3t
 duck_report_card_connect.execute(f"""
@@ -114,6 +116,36 @@ duck_report_card_connect.execute(f"""
         num_sched_trips FLOAT,
         terminal_on_time_performance FLOAT,
         CONSTRAINT unique_row UNIQUE(month, division, line, day_type)    
+    );
+""")
+
+# create table "mta_overall_ridership_traffic_old", define the columns from the dataset
+# enforce uniqueness in table
+# https://dev.socrata.com/foundry/data.ny.gov/xfre-bxip
+duck_report_card_connect.execute(f"""
+    CREATE TABLE IF NOT EXISTS mta_overall_ridership_traffic_old (
+        month TIMESTAMP,
+        agency TEXT,
+        ridership FLOAT,
+        CONSTRAINT unique_row UNIQUE(month, agency)
+    );
+""")
+
+# create table "mta_bus_speeds", define the columns from the dataset
+# enforce uniqueness in table
+# https://dev.socrata.com/foundry/data.ny.gov/cudb-vcni
+duck_report_card_connect.execute(f"""
+    CREATE TABLE IF NOT EXISTS mta_bus_speeds (
+        month TIMESTAMP,
+        borough TEXT,
+        day_type FLOAT,
+        trip_type TEXT,
+        route_id TEXT,
+        period TEXT,
+        total_operating_time FLOAT,
+        total_mileage FLOAT,
+        average_speed FLOAT, 
+        CONSTRAINT unique_bus_speed_record UNIQUE (month, borough, day_type, trip_type, route_id, period)
     );
 """)
 
@@ -153,7 +185,9 @@ def get_timestamp_name(duckdb_database):
         "mta_subway_ridership" : "transit_timestamp",
         "cbd_entries" : "toll_10_minute_block",
         "mta_overall_ridership_traffic" : "date",
-        "mta_subway_otp" : "month"
+        "mta_subway_otp" : "month",
+        "mta_overall_ridership_traffic_old" : "month",
+        "mta_bus_speeds" : "month"
 
     }.get(duckdb_database)
     or "none_found")
@@ -279,9 +313,16 @@ update_duckdb_database(nys_client, open_data_dict["mta_overall_ridership_traffic
 #run function for MTA Subway On-Time Performance
 update_duckdb_database(nys_client, open_data_dict["mta_subway_otp"], "mta_subway_otp")
 
+#run function for OLD MTA Overall Ridership/Traffic
+update_duckdb_database(nys_client, open_data_dict["mta_overall_ridership_traffic_old"], "mta_overall_ridership_traffic_old")
+
+#run function for MTA Bus Speeds
+update_duckdb_database(nys_client, open_data_dict["mta_bus_speeds"], "mta_bus_speeds")
 
 
-for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership", "mta_subway_otp"]:
+
+
+for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership", "mta_subway_otp", "mta_overall_ridership_traffic_old", "mta_bus_speeds"]:
 
     output_path = f"/home/doke30/urban blogs/UrbanBlogs/src/{metric}.parquet"
 
