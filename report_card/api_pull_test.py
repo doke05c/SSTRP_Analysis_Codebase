@@ -17,11 +17,14 @@ open_data_dict = {
     "mta_overall_ridership_traffic": "sayj-mze2",
     "mta_subway_otp": "f6rf-2a3t",
     "mta_overall_ridership_traffic_old": "xfre-bxip",
-    "mta_bus_speeds": "cudb-vcni"
+    "mta_bus_speeds": "cudb-vcni",
+    "mta_bus_otp": "8mkn-d32t",
+    "mta_lirr_otp" : "6kq9-5ikh",
+    "mta_mnr_otp" : "83hw-i6xw"
 }
 
 #initialize DuckDB database for the report card
-duck_report_card_connect = duckdb.connect(database="/home/doke30/urban blogs/UrbanBlogs/src/report_card.duckdb") 
+duck_report_card_connect = duckdb.connect(database="/home/doke30/urban_blogs/UrbanBlogs/src/report_card.duckdb") 
 
 #use spatial element
 duck_report_card_connect.execute("INSTALL spatial;")
@@ -149,6 +152,27 @@ duck_report_card_connect.execute(f"""
     );
 """)
 
+# create table "mta_bus_otp", define the columns from the dataset
+# enforce uniqueness in table
+# https://dev.socrata.com/foundry/data.ny.gov/8mkn-d32t
+duck_report_card_connect.execute(f"""
+    CREATE TABLE IF NOT EXISTS mta_bus_otp (
+        month TIMESTAMP,
+        borough TEXT,
+        trip_type TEXT,
+        route_id TEXT,
+        period TEXT,
+        number_of_customers FLOAT,
+        additional_bus_stop_time FLOAT,
+        additional_travel_time FLOAT,
+        customer_journey_time FLOAT,
+        CONSTRAINT unique_bus_speed_record UNIQUE (month, borough, trip_type, route_id, period)
+    );
+""")
+
+##DO LIRR + MNR
+
+
 # Unauthenticated client only works with public data sets. Note 'None' <- DEPRECATED UNAUTHENTICATED API CLIENT, DO NOT USE
 # in place of application token, and no username or password:
 # client = Socrata("data.ny.gov", None, timeout=60)
@@ -187,7 +211,8 @@ def get_timestamp_name(duckdb_database):
         "mta_overall_ridership_traffic" : "date",
         "mta_subway_otp" : "month",
         "mta_overall_ridership_traffic_old" : "month",
-        "mta_bus_speeds" : "month"
+        "mta_bus_speeds" : "month",
+        "mta_bus_otp" : "month"
 
     }.get(duckdb_database)
     or "none_found")
@@ -319,12 +344,14 @@ update_duckdb_database(nys_client, open_data_dict["mta_overall_ridership_traffic
 #run function for MTA Bus Speeds
 update_duckdb_database(nys_client, open_data_dict["mta_bus_speeds"], "mta_bus_speeds")
 
+#run function for MTA Bus OTP
+update_duckdb_database(nys_client, open_data_dict["mta_bus_otp"], "mta_bus_otp")
 
 
 
-for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership", "mta_subway_otp", "mta_overall_ridership_traffic_old", "mta_bus_speeds"]:
+for metric in ["cbd_entries", "mta_bridge_traffic", "mta_overall_ridership_traffic", "mta_subway_ridership", "mta_subway_otp", "mta_overall_ridership_traffic_old", "mta_bus_speeds", "mta_bus_otp"]:
 
-    output_path = f"/home/doke30/urban blogs/UrbanBlogs/src/{metric}.parquet"
+    output_path = f"/home/doke30/urban_blogs/UrbanBlogs/src/{metric}.parquet"
 
     traffic_row_count = duck_report_card_connect.execute(f"""
         SELECT COUNT(*) FROM {metric} AS traffic_row_count
